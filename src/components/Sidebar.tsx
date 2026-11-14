@@ -24,12 +24,11 @@ import {
   CheckCircle2,
   Lock,
   Upload,
-  Box,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext.tsx';
 import { useFirebaseVault } from '../context/FirebaseVaultContext.tsx';
 
-export type PortalModule = 'recruitment' | 'tasks' | 'vault' | 'campus3d';
+export type PortalModule = 'recruitment' | 'tasks' | 'vault';
 
 export type NavTab =
   // Recruitment Portal (Flagship)
@@ -78,6 +77,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
 }) => {
   const { activePersona } = useAuth();
   const { isAdmin: vaultIsAdmin } = useFirebaseVault();
+  const isSystemAdmin = activePersona.role === 'admin' || activePersona.employeeCode === '02-02-2222';
 
   // Recruitment Navigation Items
   const recruitmentNavItems: Array<{
@@ -285,30 +285,24 @@ export const Sidebar: React.FC<SidebarProps> = ({
             <CheckSquare className="w-3.5 h-3.5" />
             <span>Tasks &amp; KPI</span>
           </button>
-          <button
-            onClick={() => {
-              setCurrentModule('vault');
-              setActiveTab('vault-home');
-            }}
-            title="Secure Document Vault"
-            className={`py-1.5 px-2.5 rounded-lg font-bold text-center transition-all flex items-center justify-center space-x-1 ${
-              currentModule === 'vault'
-                ? 'bg-red-600 text-white shadow-sm shadow-red-600/30'
-                : 'text-slate-400 hover:text-white'
-            }`}
-          >
-            <Lock className="w-3.5 h-3.5" />
-            <span>Vault</span>
-          </button>
+          {isSystemAdmin && (
+            <button
+              onClick={() => {
+                setCurrentModule('vault');
+                setActiveTab('vault-home');
+              }}
+              title="Secure Document Vault (System Admin Only)"
+              className={`py-1.5 px-2.5 rounded-lg font-bold text-center transition-all flex items-center justify-center space-x-1 ${
+                currentModule === 'vault'
+                  ? 'bg-red-600 text-white shadow-sm shadow-red-600/30'
+                  : 'text-slate-400 hover:text-white'
+              }`}
+            >
+              <Lock className="w-3.5 h-3.5" />
+              <span>Vault</span>
+            </button>
+          )}
         </div>
-
-        <button
-          onClick={() => setCurrentModule('campus3d')}
-          className="w-full py-1.5 px-3 rounded-xl bg-slate-950/80 hover:bg-slate-800 border border-slate-800 text-xs font-bold text-amber-300 flex items-center justify-center space-x-2 transition"
-        >
-          <Box className="w-3.5 h-3.5" />
-          <span>3D Campus Twin</span>
-        </button>
 
         <div className="px-3 pb-1 text-[10px] font-bold text-slate-400 uppercase tracking-wider flex items-center justify-between">
           <span>

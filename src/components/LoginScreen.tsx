@@ -3,11 +3,7 @@ import React, { useState } from 'react';
 import { Building2, Lock, User, AlertCircle, ArrowRight, ShieldCheck } from 'lucide-react';
 import { useAuth } from '../context/AuthContext.tsx';
 
-interface LoginScreenProps {
-  onOpenVault?: () => void;
-}
-
-export const LoginScreen: React.FC<LoginScreenProps> = ({ onOpenVault }) => {
+export const LoginScreen: React.FC = () => {
   const { loginWithCredentials } = useAuth();
   const [employeeId, setEmployeeId] = useState('');
   const [password, setPassword] = useState('');
@@ -129,15 +125,6 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onOpenVault }) => {
                 <ShieldCheck className="w-4 h-4 text-emerald-400" />
                 <span>Enterprise Single Sign-On · Renaissance Group</span>
               </div>
-              {onOpenVault && (
-                <button
-                  type="button"
-                  onClick={onOpenVault}
-                  className="text-[11px] font-semibold text-amber-300/90 hover:text-amber-200 underline underline-offset-4 transition cursor-pointer"
-                >
-                  Open Secure Upload Vault / Admin Portal
-                </button>
-              )}
             </div>
           </div>
         </div>

@@ -42,6 +42,7 @@ import { RecruitmentRealtimeIndicator, SyncStatus } from './RecruitmentRealtimeI
 import { RecruitmentModal } from './RecruitmentModal.tsx';
 import { Employee } from '../../types/index.ts';
 import { generateLocalAnalytics } from '../../lib/api.ts';
+import { HodSummary3DCard } from './HodSummary3DCard.tsx';
 
 interface Props {
   stats: RecruitmentStats | null;
@@ -89,6 +90,8 @@ export const RecruitmentDashboardView: React.FC<Props> = ({
   // HOD-Wise Checklist State
   const [hodSearch, setHodSearch] = useState('');
   const [selectedHodFilter, setSelectedHodFilter] = useState('ALL');
+  const [selectedRecruiterFilter, setSelectedRecruiterFilter] = useState<'ALL' | 'Sabbir' | 'Fariha' | 'Nuzhat' | 'Maisa'>('ALL');
+  const [selectedMonthFilter, setSelectedMonthFilter] = useState<string>('ALL');
   const [selectedStatusFilter, setSelectedStatusFilter] = useState<string>(initialStatusFilter || 'ALL');
   const [collapsedHods, setCollapsedHods] = useState<Record<string, boolean>>({});
 
@@ -158,6 +161,56 @@ export const RecruitmentDashboardView: React.FC<Props> = ({
     }
   }, [justMovedRequisitionId, requisitions]);
 
+  const matchesRecruiterFilter = (
+    r: RecruitmentRequisition,
+    filter: 'ALL' | 'Sabbir' | 'Fariha' | 'Nuzhat' | 'Maisa'
+  ) => {
+    if (filter === 'ALL') return true;
+    const name = (r.recruitmentAssistedByName || '').toLowerCase();
+    const code = (r.recruitmentAssistedByCode || '').trim();
+    switch (filter) {
+      case 'Sabbir':
+        return code === '22-02-1642' || name.includes('sabbir');
+      case 'Fariha':
+        return code === '02-02-2059' || name.includes('fariha') || name.includes('nasmi');
+      case 'Nuzhat':
+        return code === '22-02-1330' || name.includes('nuzhat');
+      case 'Maisa':
+        return code === '22-02-1551' || name.includes('maisha') || name.includes('maisa');
+      default:
+        return true;
+    }
+  };
+
+  const availableMonths = useMemo(() => {
+    const months = new Set<string>();
+    requisitions.forEach((r) => {
+      const ym = (r.requisitionDate || '').slice(0, 7);
+      if (/^\d{4}-\d{2}$/.test(ym)) months.add(ym);
+    });
+    return Array.from(months).sort((a, b) => b.localeCompare(a));
+  }, [requisitions]);
+
+  const formatMonthLabel = (ym: string) => {
+    try {
+      return new Intl.DateTimeFormat('en-US', { month: 'long', year: 'numeric' }).format(
+        new Date(`${ym}-01T00:00:00`)
+      );
+    } catch {
+      return ym;
+    }
+  };
+
+  const monthScopedRequisitions = useMemo(() => {
+    if (selectedMonthFilter === 'ALL') return requisitions;
+    return requisitions.filter((r) => (r.requisitionDate || '').slice(0, 7) === selectedMonthFilter);
+  }, [requisitions, selectedMonthFilter]);
+
+  const recruiterScopedRequisitions = useMemo(() => {
+    if (selectedRecruiterFilter === 'ALL') return monthScopedRequisitions;
+    return monthScopedRequisitions.filter((r) => matchesRecruiterFilter(r, selectedRecruiterFilter));
+  }, [monthScopedRequisitions, selectedRecruiterFilter]);
+
   // Group requisitions by HOD
   const hodGroups = useMemo(() => {
     const map = new Map<
@@ -174,7 +227,7 @@ export const RecruitmentDashboardView: React.FC<Props> = ({
       }
     >();
 
-    requisitions.forEach((r) => {
+    recruiterScopedRequisitions.forEach((r) => {
       const hodName = r.hod && r.hod.trim() ? r.hod.trim() : 'Unassigned HOD';
       if (!map.has(hodName)) {
         map.set(hodName, {
@@ -199,7 +252,7 @@ export const RecruitmentDashboardView: React.FC<Props> = ({
     });
 
     return Array.from(map.values()).sort((a, b) => b.total - a.total);
-  }, [requisitions]);
+  }, [recruiterScopedRequisitions]);
 
   // Unique HOD names for filter pill tabs
   const uniqueHodNames = useMemo(() => {
@@ -214,7 +267,7 @@ export const RecruitmentDashboardView: React.FC<Props> = ({
     let didNotJoin = 0;
     let cancelled = 0;
 
-    requisitions.forEach((r) => {
+    recruiterScopedRequisitions.forEach((r) => {
       if (r.recruitmentStatus === 'Joined') joined++;
       else if (r.recruitmentStatus === 'Ongoing') ongoing++;
       else if (r.recruitmentStatus === 'Held Up') heldUp++;
@@ -222,8 +275,8 @@ export const RecruitmentDashboardView: React.FC<Props> = ({
       else if (r.recruitmentStatus === 'Cancelled') cancelled++;
     });
 
-    return { joined, ongoing, heldUp, didNotJoin, cancelled, total: requisitions.length };
-  }, [requisitions]);
+    return { joined, ongoing, heldUp, didNotJoin, cancelled, total: recruiterScopedRequisitions.length };
+  }, [recruiterScopedRequisitions]);
 
   // Filtered HOD groups
   const filteredHodGroups = useMemo(() => {
@@ -264,6 +317,17 @@ export const RecruitmentDashboardView: React.FC<Props> = ({
 
   const toggleHodCollapse = (name: string) => {
     setCollapsedHods((prev) => ({ ...prev, [name]: !prev[name] }));
+  };
+
+  const handleSelectHodSummaryCard = (hodName: string) => {
+    setSelectedHodFilter((prev) => (prev === hodName ? 'ALL' : hodName));
+    setCollapsedHods((prev) => ({ ...prev, [hodName]: false }));
+    setTimeout(() => {
+      const targetEl = document.getElementById(`hod-group-${encodeURIComponent(hodName)}`);
+      if (targetEl) {
+        targetEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }
+    }, 60);
   };
 
   const getStatusBadge = (status: RecruitmentStatus) => {
@@ -344,18 +408,18 @@ export const RecruitmentDashboardView: React.FC<Props> = ({
     }
   };
 
-  // Dynamic metrics: Filter by selected HOD if selectedHodFilter !== 'ALL'
+  // Dynamic metrics: Filter by selected Recruiter, Month, and/or selected HOD
   const effectiveStats: RecruitmentStats = useMemo(() => {
-    if (selectedHodFilter !== 'ALL') {
-      const filteredReqs = requisitions.filter(
-        (r) => (r.hod && r.hod.trim()) === selectedHodFilter
+    if (selectedRecruiterFilter !== 'ALL' || selectedMonthFilter !== 'ALL' || selectedHodFilter !== 'ALL') {
+      const filteredReqs = recruiterScopedRequisitions.filter((r) =>
+        selectedHodFilter === 'ALL' ? true : (r.hod && r.hod.trim()) === selectedHodFilter
       );
       return generateLocalAnalytics(filteredReqs);
     }
 
     if (stats) return stats;
     return generateLocalAnalytics(requisitions);
-  }, [selectedHodFilter, stats, requisitions]);
+  }, [selectedRecruiterFilter, selectedMonthFilter, selectedHodFilter, recruiterScopedRequisitions, stats, requisitions]);
 
   if (loading && !stats && requisitions.length === 0) {
     return (
@@ -422,6 +486,67 @@ export const RecruitmentDashboardView: React.FC<Props> = ({
             <span>Open Recruitment Checklist</span>
             <ArrowRight className="w-3.5 h-3.5" />
           </button>
+        </div>
+      </div>
+
+      {/* Quick Recruiter Filter Buttons: Sabbir, Fariha, Nuzhat, Maisa */}
+      <div className="flex flex-wrap items-center gap-2 p-3 rounded-2xl bg-white dark:bg-slate-900/90 border border-slate-200 dark:border-slate-800 shadow-xs text-xs">
+        <span className="inline-flex items-center space-x-1.5 text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 mr-1">
+          <Filter className="w-3.5 h-3.5 text-indigo-500" />
+          <span>Recruiter Filter:</span>
+        </span>
+        {(['ALL', 'Sabbir', 'Fariha', 'Nuzhat', 'Maisa'] as const).map((recName) => {
+          const isActive = selectedRecruiterFilter === recName;
+          const count =
+            recName === 'ALL'
+              ? monthScopedRequisitions.length
+              : monthScopedRequisitions.filter((r) => matchesRecruiterFilter(r, recName)).length;
+          return (
+            <button
+              key={recName}
+              type="button"
+              onClick={() =>
+                setSelectedRecruiterFilter((prev) =>
+                  recName === 'ALL' ? 'ALL' : prev === recName ? 'ALL' : recName
+                )
+              }
+              className={`px-3.5 py-1.5 rounded-xl font-bold transition flex items-center space-x-1.5 cursor-pointer ${
+                isActive
+                  ? 'bg-indigo-600 text-white shadow-sm'
+                  : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:bg-indigo-50 dark:hover:bg-indigo-950/60 hover:text-indigo-700 dark:hover:text-indigo-300 border border-slate-200 dark:border-slate-700'
+              }`}
+            >
+              <span>{recName === 'ALL' ? 'All' : recName}</span>
+              <span
+                className={`px-1.5 py-0.2 rounded-full text-[10px] font-mono font-bold ${
+                  isActive
+                    ? 'bg-white/20 text-white'
+                    : 'bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300'
+                }`}
+              >
+                {count}
+              </span>
+            </button>
+          );
+        })}
+
+        <div className="sm:ml-auto flex items-center gap-2">
+          <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+            Month:
+          </span>
+          <select
+            value={selectedMonthFilter}
+            onChange={(e) => setSelectedMonthFilter(e.target.value)}
+            aria-label="Filter recruitment overview by month"
+            className="px-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-xs text-slate-700 dark:text-slate-200 font-semibold focus:outline-none focus:ring-2 focus:ring-indigo-500"
+          >
+            <option value="ALL">All Months</option>
+            {availableMonths.map((ym) => (
+              <option key={ym} value={ym}>
+                {formatMonthLabel(ym)}
+              </option>
+            ))}
+          </select>
         </div>
       </div>
 
@@ -961,6 +1086,28 @@ export const RecruitmentDashboardView: React.FC<Props> = ({
           </div>
         )}
 
+        {/* 3D HOD Summary Cards Grid */}
+        {hodGroups.length > 0 && (
+          <div className="space-y-2.5 pt-1">
+            <div className="flex items-center justify-between text-[11px] text-slate-500 dark:text-slate-400">
+              <span className="font-bold uppercase tracking-wider text-slate-600 dark:text-slate-300">
+                3D HOD Summary Cards
+              </span>
+              <span>Click any HOD card to expand &amp; jump to their detailed checklist</span>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+              {hodGroups.map((group) => (
+                <HodSummary3DCard
+                  key={`card-${group.name}`}
+                  group={group}
+                  isSelected={selectedHodFilter === group.name}
+                  onSelect={handleSelectHodSummaryCard}
+                />
+              ))}
+            </div>
+          </div>
+        )}
+
         {/* HOD Grouped Accordion Cards */}
         {filteredHodGroups.length > 0 && (
           <div className="space-y-4">
@@ -970,7 +1117,12 @@ export const RecruitmentDashboardView: React.FC<Props> = ({
               return (
                 <div
                   key={group.name}
-                  className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 overflow-hidden shadow-xs hover:border-slate-300 dark:hover:border-slate-700 transition-all"
+                  id={`hod-group-${encodeURIComponent(group.name)}`}
+                  className={`rounded-2xl border bg-white dark:bg-slate-900 overflow-hidden shadow-xs transition-all scroll-mt-20 ${
+                    selectedHodFilter === group.name
+                      ? 'border-indigo-400 dark:border-indigo-500 ring-2 ring-indigo-500/20'
+                      : 'border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700'
+                  }`}
                 >
                   {/* Group Header Bar */}
                   <div

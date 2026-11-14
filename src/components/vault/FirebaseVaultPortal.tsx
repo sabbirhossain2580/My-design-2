@@ -23,14 +23,12 @@ import {
   Download,
   ExternalLink,
   FileText,
-  Info,
   Lock,
   LogOut,
   ShieldAlert,
   ShieldCheck,
   Trash2,
   Upload,
-  UserPlus,
 } from 'lucide-react';
 import { useFirebaseVault } from '../../context/FirebaseVaultContext.tsx';
 import { db, handleFirestoreError, OperationType, storage } from '../../lib/firebase.ts';
@@ -48,12 +46,14 @@ interface UploadRecord {
 
 interface FirebaseVaultPortalProps {
   initialRoute?: 'home' | 'admin';
+  isSystemAdmin?: boolean;
   onExitStandalone?: () => void;
   onRouteChange?: (route: 'home' | 'admin') => void;
 }
 
 export const FirebaseVaultPortal: React.FC<FirebaseVaultPortalProps> = ({
   initialRoute = 'home',
+  isSystemAdmin = false,
   onExitStandalone,
   onRouteChange,
 }) => {
@@ -63,7 +63,6 @@ export const FirebaseVaultPortal: React.FC<FirebaseVaultPortalProps> = ({
     authReady,
     isAdmin,
     signInWithEmail,
-    signUpWithEmail,
     signOutVault,
   } = useFirebaseVault();
 
@@ -76,8 +75,7 @@ export const FirebaseVaultPortal: React.FC<FirebaseVaultPortalProps> = ({
   });
   const [accessDeniedNotice, setAccessDeniedNotice] = useState(false);
 
-  // Auth form state
-  const [authMode, setAuthMode] = useState<'login' | 'signup'>('login');
+  // Auth form state (Sign In only — account creation disabled)
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [authError, setAuthError] = useState('');
@@ -203,11 +201,7 @@ export const FirebaseVaultPortal: React.FC<FirebaseVaultPortalProps> = ({
     setAuthError('');
     setAuthLoading(true);
     try {
-      if (authMode === 'signup') {
-        await signUpWithEmail(email, password);
-      } else {
-        await signInWithEmail(email, password);
-      }
+      await signInWithEmail(email, password);
       setPassword('');
     } catch (err: any) {
       const code = err?.code || '';
@@ -345,6 +339,22 @@ export const FirebaseVaultPortal: React.FC<FirebaseVaultPortalProps> = ({
     }
   };
 
+  if (!isSystemAdmin) {
+    return (
+      <div className="max-w-xl mx-auto py-8">
+        <div className="p-6 rounded-2xl bg-red-50 dark:bg-red-950/50 border border-red-200 dark:border-red-800 flex items-start space-x-3 text-xs text-red-800 dark:text-red-200 shadow-sm">
+          <ShieldAlert className="w-6 h-6 text-red-600 shrink-0 mt-0.5" />
+          <div>
+            <h2 className="font-extrabold text-base">Access Denied</h2>
+            <p className="mt-1 leading-relaxed">
+              The Secure Document &amp; Data Vault is restricted strictly to the System Administrator.
+            </p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   if (!authReady) {
     return (
       <div className="min-h-[60vh] flex items-center justify-center p-6">
@@ -447,40 +457,19 @@ export const FirebaseVaultPortal: React.FC<FirebaseVaultPortalProps> = ({
         </div>
       )}
 
-      {/* ANONYMOUS VISITOR: Email/Password Login & Signup Gate ONLY */}
+      {/* SYSTEM ADMIN AUTH GATE: Sign In Only */}
       {!firebaseUser ? (
         <div className="max-w-md mx-auto bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-lg overflow-hidden">
-          <div className="p-6 border-b border-slate-100 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-950/40">
-            <div className="flex rounded-xl bg-slate-200/70 dark:bg-slate-800 p-1 text-xs font-bold">
-              <button
-                type="button"
-                onClick={() => {
-                  setAuthMode('login');
-                  setAuthError('');
-                }}
-                className={`flex-1 py-2 rounded-lg transition ${
-                  authMode === 'login'
-                    ? 'bg-white dark:bg-slate-900 text-slate-900 dark:text-white shadow-xs'
-                    : 'text-slate-600 dark:text-slate-400'
-                }`}
-              >
-                Sign In
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setAuthMode('signup');
-                  setAuthError('');
-                }}
-                className={`flex-1 py-2 rounded-lg transition ${
-                  authMode === 'signup'
-                    ? 'bg-white dark:bg-slate-900 text-slate-900 dark:text-white shadow-xs'
-                    : 'text-slate-600 dark:text-slate-400'
-                }`}
-              >
-                Create Account
-              </button>
+          <div className="px-6 py-4 border-b border-slate-100 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-950/40 flex items-center justify-between">
+            <div className="flex items-center space-x-2">
+              <ShieldCheck className="w-4 h-4 text-red-600" />
+              <span className="text-xs font-extrabold uppercase tracking-wider text-slate-800 dark:text-slate-100">
+                System Admin Sign In
+              </span>
             </div>
+            <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded bg-red-600/10 text-red-700 dark:text-red-300 border border-red-200 dark:border-red-900/60">
+              Restricted
+            </span>
           </div>
 
           <form onSubmit={handleAuthSubmit} className="p-6 space-y-4 text-xs">
@@ -500,7 +489,7 @@ export const FirebaseVaultPortal: React.FC<FirebaseVaultPortalProps> = ({
                 required
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                placeholder="name@company.com"
+                placeholder="admin@company.com"
                 className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950 text-slate-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
               />
             </div>
@@ -525,26 +514,29 @@ export const FirebaseVaultPortal: React.FC<FirebaseVaultPortalProps> = ({
               disabled={authLoading}
               className="w-full py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 dark:bg-indigo-600 dark:hover:bg-indigo-500 text-white font-bold text-sm flex items-center justify-center space-x-2 transition disabled:opacity-60"
             >
-              {authMode === 'signup' ? <UserPlus className="w-4 h-4" /> : <Lock className="w-4 h-4" />}
-              <span>
-                {authLoading
-                  ? 'Please wait...'
-                  : authMode === 'signup'
-                  ? 'Sign Up (Default Role: User)'
-                  : 'Sign In'}
-              </span>
+              <Lock className="w-4 h-4" />
+              <span>{authLoading ? 'Signing In...' : 'Sign In'}</span>
             </button>
-
-            <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 text-[11px] text-slate-600 dark:text-slate-400 space-y-1">
-              <div className="font-bold text-slate-800 dark:text-slate-200 flex items-center space-x-1.5">
-                <Info className="w-3.5 h-3.5 text-indigo-500" />
-                <span>Admin Setup Note</span>
-              </div>
-              <p>
-                New accounts are created with <code>role = &quot;user&quot;</code> in Firestore <code>users/&#123;uid&#125;</code>. To promote an admin, set <code>role</code> to <code>&quot;admin&quot;</code> on that document in Firebase Console → Firestore, and ensure Email/Password auth is enabled in Firebase Console.
+          </form>
+        </div>
+      ) : profile && !isAdmin ? (
+        <div className="max-w-lg mx-auto p-6 rounded-2xl bg-red-50 dark:bg-red-950/50 border border-red-200 dark:border-red-800 flex items-start justify-between gap-4 text-xs text-red-800 dark:text-red-200">
+          <div className="flex items-start space-x-3">
+            <ShieldAlert className="w-5 h-5 text-red-600 shrink-0 mt-0.5" />
+            <div>
+              <div className="font-extrabold text-sm">Access Denied</div>
+              <p className="mt-1">
+                This Firebase account does not have administrator permissions to access the Secure Vault.
               </p>
             </div>
-          </form>
+          </div>
+          <button
+            type="button"
+            onClick={signOutVault}
+            className="px-3 py-1.5 rounded-xl bg-white dark:bg-slate-900 border border-red-200 dark:border-red-800 font-bold text-rose-600 shrink-0"
+          >
+            Sign Out
+          </button>
         </div>
       ) : route === 'admin' && isAdmin ? (
         /* ADMIN DASHBOARD (/admin) */

@@ -69,6 +69,8 @@ export const TaskRegisterView: React.FC<TaskRegisterViewProps> = ({
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [priorityFilter, setPriorityFilter] = useState<string>('all');
   const [employeeFilter, setEmployeeFilter] = useState<string>('all');
+  const [teamMemberFilter, setTeamMemberFilter] = useState<string>('all');
+  const [monthFilter, setMonthFilter] = useState<string>('all');
 
   // Modals
   const [createModalOpen, setCreateModalOpen] = useState(false);
@@ -116,6 +118,25 @@ export const TaskRegisterView: React.FC<TaskRegisterViewProps> = ({
     }
     return merged;
   }, [employees]);
+
+  const availableMonths = React.useMemo(() => {
+    const months = new Set<string>();
+    for (const t of tasks) {
+      const ym = (t.revisedDeadline || t.originalDeadline || t.assignmentDate || '').slice(0, 7);
+      if (/^\d{4}-\d{2}$/.test(ym)) months.add(ym);
+    }
+    return Array.from(months).sort((a, b) => b.localeCompare(a));
+  }, [tasks]);
+
+  const formatMonthLabel = (ym: string) => {
+    try {
+      return new Intl.DateTimeFormat('en-US', { month: 'long', year: 'numeric' }).format(
+        new Date(`${ym}-01T00:00:00`)
+      );
+    } catch {
+      return ym;
+    }
+  };
 
   // Filter tasks based on viewMode and user filters
   const filteredTasks = tasks.filter((t) => {
@@ -172,7 +193,30 @@ export const TaskRegisterView: React.FC<TaskRegisterViewProps> = ({
     // 5. Employee filter
     const matchEmployee = employeeFilter === 'all' || t.assignedEmployeeId === parseInt(employeeFilter, 10);
 
-    return matchSearch && matchStatus && matchPriority && matchEmployee;
+    // 6. Quick HR Team Member button filter (Sabbir, Nuzhat, Nasmi, Maisa, Naiem)
+    let matchTeamMember = true;
+    if (teamMemberFilter !== 'all') {
+      const quickMap: Record<string, { code: string; tokens: string[] }> = {
+        sabbir: { code: '22-02-1642', tokens: ['sabbir'] },
+        nuzhat: { code: '22-02-1330', tokens: ['nuzhat'] },
+        nasmi: { code: '02-02-2059', tokens: ['nasmi', 'fariha'] },
+        maisa: { code: '22-02-1551', tokens: ['maisa', 'maisha'] },
+        naiem: { code: '22-02-1826', tokens: ['naiem', 'shahriyar'] },
+      };
+      const cfg = quickMap[teamMemberFilter];
+      if (cfg) {
+        const empName = (t.employeeName || '').toLowerCase();
+        const empCode = (t.employeeCode || '').trim();
+        matchTeamMember =
+          empCode === cfg.code || cfg.tokens.some((tok) => empName.includes(tok));
+      }
+    }
+
+    // 7. Month filter
+    const taskMonth = (t.revisedDeadline || t.originalDeadline || t.assignmentDate || '').slice(0, 7);
+    const matchMonth = monthFilter === 'all' || taskMonth === monthFilter;
+
+    return matchSearch && matchStatus && matchPriority && matchEmployee && matchTeamMember && matchMonth;
   });
 
   const handlePoke = async (taskId: number) => {
@@ -534,7 +578,21 @@ export const TaskRegisterView: React.FC<TaskRegisterViewProps> = ({
               <option value="Low">Low</option>
             </select>
 
-            {(searchTerm || statusFilter !== 'all' || priorityFilter !== 'all' || employeeFilter !== 'all') && (
+            <select
+              value={monthFilter}
+              onChange={(e) => setMonthFilter(e.target.value)}
+              aria-label="Filter tasks by month"
+              className="border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2.5 bg-slate-50 dark:bg-slate-800 text-xs text-slate-700 dark:text-slate-200 font-medium focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            >
+              <option value="all">All Months</option>
+              {availableMonths.map((ym) => (
+                <option key={ym} value={ym}>
+                  {formatMonthLabel(ym)}
+                </option>
+              ))}
+            </select>
+
+            {(searchTerm || statusFilter !== 'all' || priorityFilter !== 'all' || employeeFilter !== 'all' || teamMemberFilter !== 'all' || monthFilter !== 'all') && (
               <button
                 type="button"
                 onClick={() => {
@@ -542,6 +600,8 @@ export const TaskRegisterView: React.FC<TaskRegisterViewProps> = ({
                   setStatusFilter('all');
                   setPriorityFilter('all');
                   setEmployeeFilter('all');
+                  setTeamMemberFilter('all');
+                  setMonthFilter('all');
                 }}
                 className="px-3 py-2.5 text-xs text-slate-500 hover:text-red-600 font-semibold transition flex items-center space-x-1"
                 title="Reset all search & filters"
@@ -551,6 +611,43 @@ export const TaskRegisterView: React.FC<TaskRegisterViewProps> = ({
               </button>
             )}
           </div>
+        </div>
+
+        {/* Team Quick Filter Buttons: Sabbir, Nuzhat, Nasmi, Maisa, Naiem */}
+        <div className="flex flex-wrap items-center gap-2 pt-1 text-xs">
+          <span className="inline-flex items-center space-x-1 text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 mr-1">
+            <User className="w-3.5 h-3.5 text-indigo-500" />
+            <span>Team Filter:</span>
+          </span>
+          {[
+            { key: 'all', label: 'All' },
+            { key: 'sabbir', label: 'Sabbir' },
+            { key: 'nuzhat', label: 'Nuzhat' },
+            { key: 'nasmi', label: 'Nasmi' },
+            { key: 'maisa', label: 'Maisa' },
+            { key: 'naiem', label: 'Naiem' },
+          ].map((member) => {
+            const isActive = teamMemberFilter === member.key;
+            return (
+              <button
+                key={member.key}
+                type="button"
+                onClick={() => {
+                  setTeamMemberFilter((prev) =>
+                    member.key === 'all' ? 'all' : prev === member.key ? 'all' : member.key
+                  );
+                  setEmployeeFilter('all');
+                }}
+                className={`px-3 py-1.5 rounded-xl font-bold transition cursor-pointer ${
+                  isActive
+                    ? 'bg-indigo-600 text-white shadow-sm'
+                    : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:bg-indigo-50 dark:hover:bg-indigo-950/60 hover:text-indigo-700 dark:hover:text-indigo-300 border border-slate-200 dark:border-slate-700'
+                }`}
+              >
+                {member.label}
+              </button>
+            );
+          })}
         </div>
 
         {/* Results summary bar with active search query pill */}
@@ -613,7 +710,7 @@ export const TaskRegisterView: React.FC<TaskRegisterViewProps> = ({
                           ? 'Try searching by task ID (e.g. TSK-1001), keyword, or assignee employee name.'
                           : 'Try adjusting or resetting your status and priority filters.'}
                       </p>
-                      {(searchTerm || statusFilter !== 'all' || priorityFilter !== 'all' || employeeFilter !== 'all') && (
+                      {(searchTerm || statusFilter !== 'all' || priorityFilter !== 'all' || employeeFilter !== 'all' || teamMemberFilter !== 'all') && (
                         <button
                           type="button"
                           onClick={() => {
@@ -621,6 +718,7 @@ export const TaskRegisterView: React.FC<TaskRegisterViewProps> = ({
                             setStatusFilter('all');
                             setPriorityFilter('all');
                             setEmployeeFilter('all');
+                            setTeamMemberFilter('all');
                           }}
                           className="mt-2 inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-lg bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950/60 dark:hover:bg-indigo-900/60 text-indigo-700 dark:text-indigo-300 text-xs font-semibold transition"
                         >

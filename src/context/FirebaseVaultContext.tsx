@@ -2,7 +2,6 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import {
   User as FirebaseUser,
-  createUserWithEmailAndPassword,
   signInWithEmailAndPassword,
   signOut,
   onAuthStateChanged,
@@ -30,7 +29,6 @@ interface FirebaseVaultContextType {
   profile: VaultUserProfile | null;
   authReady: boolean;
   isAdmin: boolean;
-  signUpWithEmail: (email: string, password: string) => Promise<void>;
   signInWithEmail: (email: string, password: string) => Promise<void>;
   signOutVault: () => Promise<void>;
 }
@@ -107,22 +105,6 @@ export const FirebaseVaultProvider: React.FC<{ children: React.ReactNode }> = ({
     };
   }, []);
 
-  const signUpWithEmail = async (email: string, password: string) => {
-    const cleanEmail = email.trim();
-    const cred = await createUserWithEmailAndPassword(auth, cleanEmail, password);
-    const userPath = `users/${cred.user.uid}`;
-    try {
-      await setDoc(doc(db, 'users', cred.user.uid), {
-        uid: cred.user.uid,
-        email: cred.user.email || cleanEmail,
-        role: 'user',
-        createdAt: serverTimestamp(),
-      });
-    } catch (err) {
-      handleFirestoreError(err, OperationType.CREATE, userPath);
-    }
-  };
-
   const signInWithEmail = async (email: string, password: string) => {
     const cleanEmail = email.trim();
     const cred = await signInWithEmailAndPassword(auth, cleanEmail, password);
@@ -155,7 +137,6 @@ export const FirebaseVaultProvider: React.FC<{ children: React.ReactNode }> = ({
         profile,
         authReady,
         isAdmin,
-        signUpWithEmail,
         signInWithEmail,
         signOutVault,
       }}

@@ -17,7 +17,6 @@ import {
   Sparkles,
   Layers,
   Lock,
-  Box,
 } from 'lucide-react';
 import { NotificationItem } from '../types/index.ts';
 import { useFirebaseVault } from '../context/FirebaseVaultContext.tsx';
@@ -48,6 +47,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   const { isAdmin: vaultIsAdmin } = useFirebaseVault();
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const unreadCount = notifications.filter((n) => !n.isRead).length;
+  const isSystemAdmin = activePersona.role === 'admin' || activePersona.employeeCode === '02-02-2222';
 
   const roleLabelMap: Record<string, { label: string; badge: string }> = {
     head_of_hr: { label: 'Head of HR', badge: 'bg-purple-900/40 text-purple-200 border-purple-700/60' },
@@ -119,28 +119,19 @@ export const Navbar: React.FC<NavbarProps> = ({
             <CheckSquare className="w-3.5 h-3.5" />
             <span>Tasks &amp; KPI System</span>
           </button>
-          <button
-            onClick={() => onChangeModule('vault')}
-            className={`flex items-center space-x-2 px-3.5 py-1.5 rounded-lg font-bold transition-all ${
-              currentModule === 'vault'
-                ? 'bg-gradient-to-r from-red-600 to-rose-700 text-white shadow-sm shadow-red-600/30'
-                : 'text-slate-400 hover:text-white'
-            }`}
-          >
-            <Lock className="w-3.5 h-3.5" />
-            <span>Secure Vault</span>
-          </button>
-          <button
-            onClick={() => onChangeModule('campus3d')}
-            className={`flex items-center space-x-2 px-3.5 py-1.5 rounded-lg font-bold transition-all ${
-              currentModule === 'campus3d'
-                ? 'bg-gradient-to-r from-amber-500 to-amber-600 text-slate-950 shadow-sm'
-                : 'text-amber-300 hover:text-white'
-            }`}
-          >
-            <Box className="w-3.5 h-3.5" />
-            <span>3D Campus</span>
-          </button>
+          {isSystemAdmin && (
+            <button
+              onClick={() => onChangeModule('vault')}
+              className={`flex items-center space-x-2 px-3.5 py-1.5 rounded-lg font-bold transition-all ${
+                currentModule === 'vault'
+                  ? 'bg-gradient-to-r from-red-600 to-rose-700 text-white shadow-sm shadow-red-600/30'
+                  : 'text-slate-400 hover:text-white'
+              }`}
+            >
+              <Lock className="w-3.5 h-3.5" />
+              <span>Secure Vault</span>
+            </button>
+          )}
         </div>
       )}
 
@@ -227,7 +218,7 @@ export const Navbar: React.FC<NavbarProps> = ({
               {onChangeModule && (
                 <div className="px-4 py-2.5 border-b border-slate-100 dark:border-slate-800 lg:hidden">
                   <div className="text-[10px] text-slate-400 font-bold uppercase mb-1.5">Module Selection</div>
-                  <div className="grid grid-cols-3 gap-1.5 text-xs">
+                  <div className={`grid ${isSystemAdmin ? 'grid-cols-3' : 'grid-cols-2'} gap-1.5 text-xs`}>
                     <button
                       onClick={() => {
                         onChangeModule('recruitment');
@@ -250,27 +241,20 @@ export const Navbar: React.FC<NavbarProps> = ({
                     >
                       Tasks &amp; KPI
                     </button>
-                    <button
-                      onClick={() => {
-                        onChangeModule('vault');
-                        setDropdownOpen(false);
-                      }}
-                      className={`p-2 rounded-xl text-center font-bold transition-colors ${
-                        currentModule === 'vault' ? 'bg-red-600 text-white' : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300'
-                      }`}
-                    >
-                      Vault
-                    </button>
+                    {isSystemAdmin && (
+                      <button
+                        onClick={() => {
+                          onChangeModule('vault');
+                          setDropdownOpen(false);
+                        }}
+                        className={`p-2 rounded-xl text-center font-bold transition-colors ${
+                          currentModule === 'vault' ? 'bg-red-600 text-white' : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300'
+                        }`}
+                      >
+                        Vault
+                      </button>
+                    )}
                   </div>
-                  <button
-                    onClick={() => {
-                      onChangeModule('campus3d');
-                      setDropdownOpen(false);
-                    }}
-                    className="mt-1.5 w-full p-2 rounded-xl text-center font-bold bg-amber-500/20 text-amber-700 dark:text-amber-300 hover:bg-amber-500/30 transition-colors"
-                  >
-                    Open 3D Campus Twin
-                  </button>
                 </div>
               )}
 

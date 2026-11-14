@@ -6,7 +6,6 @@ import { Navbar } from './components/Navbar.tsx';
 import { Sidebar, NavTab, PortalModule } from './components/Sidebar.tsx';
 import { LoginScreen } from './components/LoginScreen.tsx';
 import { FirebaseVaultPortal } from './components/vault/FirebaseVaultPortal.tsx';
-import { CorporateCampusScene } from './components/three/CorporateCampusScene.tsx';
 import { DashboardView } from './components/DashboardView.tsx';
 import { OverdueAlertCenter } from './components/OverdueAlertCenter.tsx';
 import { EmployeeDirectoryView } from './components/EmployeeDirectoryView.tsx';
@@ -42,15 +41,9 @@ import {
 const MainAppContent: React.FC = () => {
   const { activePersona, isAuthenticated } = useAuth();
 
-  // Standalone route (/admin or /vault) support for direct Firebase Vault visitors
-  const [standaloneVaultRoute, setStandaloneVaultRoute] = useState<'home' | 'admin' | null>(() => {
-    if (typeof window === 'undefined') return null;
-    if (window.location.pathname === '/admin') return 'admin';
-    if (window.location.pathname === '/vault') return 'home';
-    return null;
-  });
+  const isSystemAdmin = isAuthenticated && (activePersona.role === 'admin' || activePersona.employeeCode === '02-02-2222');
 
-  // Active module & tab: default to Recruitment Overview unless /admin or /vault opened directly
+  // Active module & tab: default to Recruitment Overview unless System Admin opens /admin or /vault
   const [currentModule, setCurrentModule] = useState<PortalModule>(() => {
     if (typeof window !== 'undefined' && (window.location.pathname === '/admin' || window.location.pathname === '/vault')) {
       return 'vault';
@@ -68,15 +61,11 @@ const MainAppContent: React.FC = () => {
   useEffect(() => {
     const onPopState = () => {
       if (window.location.pathname === '/admin') {
-        setStandaloneVaultRoute('admin');
         setCurrentModule('vault');
         setActiveTab('vault-admin');
       } else if (window.location.pathname === '/vault') {
-        setStandaloneVaultRoute('home');
         setCurrentModule('vault');
         setActiveTab('vault-home');
-      } else {
-        setStandaloneVaultRoute(null);
       }
     };
     window.addEventListener('popstate', onPopState);
@@ -255,46 +244,9 @@ const MainAppContent: React.FC = () => {
     await loadRecruitmentData(true);
   };
 
-  // If not authenticated to HR Employee ID portal, either render direct Firebase Vault (/admin or /vault) or Login Screen
+  // Require authenticated HR Portal session before accessing any module (Vault is System Admin only)
   if (!isAuthenticated) {
-    if (standaloneVaultRoute !== null) {
-      return (
-        <div className={`min-h-screen ${darkMode ? 'dark bg-slate-950 text-slate-100' : 'bg-slate-100 text-slate-800'} p-4 md:p-8 font-sans antialiased`}>
-          <FirebaseVaultPortal
-            initialRoute={standaloneVaultRoute}
-            onRouteChange={(nextRoute) => setStandaloneVaultRoute(nextRoute)}
-            onExitStandalone={() => {
-              setStandaloneVaultRoute(null);
-              if (typeof window !== 'undefined') {
-                window.history.pushState({}, '', '/');
-              }
-            }}
-          />
-        </div>
-      );
-    }
-    return (
-      <LoginScreen
-        onOpenVault={() => {
-          setStandaloneVaultRoute('home');
-          if (typeof window !== 'undefined') {
-            window.history.pushState({}, '', '/vault');
-          }
-        }}
-      />
-    );
-  }
-
-  if (currentModule === 'campus3d') {
-    return (
-      <CorporateCampusScene
-        requisitions={recruitmentRequisitions}
-        onExit={() => {
-          setCurrentModule('recruitment');
-          setActiveTab('recruitment-overview');
-        }}
-      />
-    );
+    return <LoginScreen />;
   }
 
   // Active counts
@@ -339,6 +291,7 @@ const MainAppContent: React.FC = () => {
         }}
         currentModule={currentModule}
         onChangeModule={(mod) => {
+          if (mod === 'vault' && !isSystemAdmin) return;
           setCurrentModule(mod);
           if (mod === 'recruitment') {
             setActiveTab('recruitment-overview');
@@ -676,12 +629,37 @@ const MainAppContent: React.FC = () => {
             )}
 
             {(activeTab === 'vault-home' || activeTab === 'vault-admin') && (
-              <FirebaseVaultPortal
-                initialRoute={activeTab === 'vault-admin' ? 'admin' : 'home'}
-                onRouteChange={(nextRoute) => {
-                  setActiveTab(nextRoute === 'admin' ? 'vault-admin' : 'vault-home');
-                }}
-              />
+              isSystemAdmin ? (
+                <FirebaseVaultPortal
+                  initialRoute={activeTab === 'vault-admin' ? 'admin' : 'home'}
+                  isSystemAdmin={isSystemAdmin}
+                  onRouteChange={(nextRoute) => {
+                    setActiveTab(nextRoute === 'admin' ? 'vault-admin' : 'vault-home');
+                  }}
+                />
+              ) : (
+                <div className="max-w-xl mx-auto py-8">
+                  <div className="p-6 rounded-2xl bg-red-50 dark:bg-red-950/50 border border-red-200 dark:border-red-800 space-y-3 text-xs text-red-800 dark:text-red-200 shadow-sm">
+                    <div className="font-extrabold text-base">Access Denied</div>
+                    <p>
+                      The Secure Document &amp; Data Vault is restricted strictly to the System Administrator.
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setCurrentModule('recruitment');
+                        setActiveTab('recruitment-overview');
+                        if (typeof window !== 'undefined' && (window.location.pathname === '/vault' || window.location.pathname === '/admin')) {
+                          window.history.replaceState({}, '', '/');
+                        }
+                      }}
+                      className="px-4 py-2 rounded-xl bg-slate-900 text-white font-bold text-xs"
+                    >
+                      Return to Recruitment Portal
+                    </button>
+                  </div>
+                </div>
+              )
             )}
 
           </div>

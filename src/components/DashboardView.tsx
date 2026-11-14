@@ -63,7 +63,14 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
         <div className="flex items-center space-x-3 text-xs">
           <span className="bg-slate-100 text-slate-700 px-3 py-1.5 rounded-lg border border-slate-200 font-medium flex items-center space-x-1.5">
             <Calendar className="w-3.5 h-3.5 text-slate-500" />
-            <span>Cycle: October 2026</span>
+            <span>
+              Cycle:{' '}
+              {new Intl.DateTimeFormat('en-US', {
+                month: 'long',
+                year: 'numeric',
+                timeZone: 'Asia/Dhaka',
+              }).format(new Date())}
+            </span>
           </span>
           <span className="bg-emerald-50 text-emerald-700 px-3 py-1.5 rounded-lg border border-emerald-200 font-medium">
             Timezone: Asia/Dhaka

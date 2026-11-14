@@ -25,6 +25,8 @@ import {
   AlertTriangle,
   ChevronLeft,
   ChevronRight,
+  ChevronDown,
+  ChevronUp,
   Sparkles,
   X,
   Layers,
@@ -38,6 +40,7 @@ import {
 import { RecruitmentRealtimeIndicator, SyncStatus } from './RecruitmentRealtimeIndicator.tsx';
 import { RecruitmentModal } from './RecruitmentModal.tsx';
 import { RecruitmentExcelImportModal } from './RecruitmentExcelImportModal.tsx';
+import { HodSummary3DCard } from './HodSummary3DCard.tsx';
 
 interface Props {
   requisitions: RecruitmentRequisition[];
@@ -92,6 +95,7 @@ export const RecruitmentChecklistView: React.FC<Props> = ({
   const [selectedAssistedBy, setSelectedAssistedBy] = useState<string>('all');
   const [selectedType, setSelectedType] = useState<string>('all');
   const [selectedHod, setSelectedHod] = useState<string>('all');
+  const [selectedMonth, setSelectedMonth] = useState<string>('all');
 
   // Sorting
   const [sortField, setSortField] = useState<SortField>('sl');
@@ -125,6 +129,48 @@ export const RecruitmentChecklistView: React.FC<Props> = ({
     }
   };
 
+  // Show/hide 3D HOD Summary Cards section
+  const [showHodCards, setShowHodCards] = useState(true);
+
+  const hodGroups = useMemo(() => {
+    const map = new Map<
+      string,
+      {
+        name: string;
+        total: number;
+        vacancies: number;
+        joined: number;
+        ongoing: number;
+        heldUp: number;
+        departments: Set<string>;
+      }
+    >();
+
+    requisitions.forEach((r) => {
+      const hodName = r.hod && r.hod.trim() ? r.hod.trim() : 'Unassigned';
+      if (!map.has(hodName)) {
+        map.set(hodName, {
+          name: hodName,
+          total: 0,
+          vacancies: 0,
+          joined: 0,
+          ongoing: 0,
+          heldUp: 0,
+          departments: new Set<string>(),
+        });
+      }
+      const item = map.get(hodName)!;
+      item.total++;
+      item.vacancies += r.vacancy || 1;
+      if (r.recruitmentStatus === 'Joined') item.joined++;
+      else if (r.recruitmentStatus === 'Ongoing') item.ongoing++;
+      else if (r.recruitmentStatus === 'Held Up') item.heldUp++;
+      if (r.department) item.departments.add(r.department);
+    });
+
+    return Array.from(map.values()).sort((a, b) => b.total - a.total);
+  }, [requisitions]);
+
   const statusCounts = useMemo(() => {
     return {
       total: requisitions.length,
@@ -149,6 +195,25 @@ export const RecruitmentChecklistView: React.FC<Props> = ({
       case 'Cancelled':
       default:
         return 'bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-300 border-rose-200 dark:border-rose-800';
+    }
+  };
+
+  const availableMonths = useMemo(() => {
+    const months = new Set<string>();
+    requisitions.forEach((r) => {
+      const ym = (r.requisitionDate || '').slice(0, 7);
+      if (/^\d{4}-\d{2}$/.test(ym)) months.add(ym);
+    });
+    return Array.from(months).sort((a, b) => b.localeCompare(a));
+  }, [requisitions]);
+
+  const formatMonthLabel = (ym: string) => {
+    try {
+      return new Intl.DateTimeFormat('en-US', { month: 'long', year: 'numeric' }).format(
+        new Date(`${ym}-01T00:00:00`)
+      );
+    } catch {
+      return ym;
     }
   };
 
@@ -186,9 +251,12 @@ export const RecruitmentChecklistView: React.FC<Props> = ({
       // HOD
       if (selectedHod !== 'all' && (r.hod || 'Unassigned') !== selectedHod) return false;
 
+      // Month
+      if (selectedMonth !== 'all' && (r.requisitionDate || '').slice(0, 7) !== selectedMonth) return false;
+
       return true;
     });
-  }, [requisitions, searchTerm, selectedCompany, selectedStatus, selectedAssistedBy, selectedType, selectedHod]);
+  }, [requisitions, searchTerm, selectedCompany, selectedStatus, selectedAssistedBy, selectedType, selectedHod, selectedMonth]);
 
   // Sort Logic
   const sortedRecords = useMemo(() => {
@@ -548,7 +616,7 @@ export const RecruitmentChecklistView: React.FC<Props> = ({
           </div>
 
           {/* Quick Filters */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+          <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
             {/* Company Filter */}
             <select
               value={selectedCompany}
@@ -628,6 +696,24 @@ export const RecruitmentChecklistView: React.FC<Props> = ({
               <option value="New Recruitment">New Recruitment</option>
               <option value="Replacement">Replacement</option>
             </select>
+
+            {/* Month Filter */}
+            <select
+              value={selectedMonth}
+              onChange={(e) => {
+                setSelectedMonth(e.target.value);
+                setCurrentPage(1);
+              }}
+              aria-label="Filter requisitions by month"
+              className="px-2.5 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs text-slate-700 dark:text-slate-200 font-semibold focus:outline-none"
+            >
+              <option value="all">All Months</option>
+              {availableMonths.map((ym) => (
+                <option key={ym} value={ym}>
+                  {formatMonthLabel(ym)}
+                </option>
+              ))}
+            </select>
           </div>
         </div>
 
@@ -641,7 +727,7 @@ export const RecruitmentChecklistView: React.FC<Props> = ({
               </span>
             )}
           </div>
-          {(selectedCompany !== 'all' || selectedStatus !== 'all' || selectedAssistedBy !== 'all' || selectedType !== 'all' || selectedHod !== 'all' || searchTerm) && (
+          {(selectedCompany !== 'all' || selectedStatus !== 'all' || selectedAssistedBy !== 'all' || selectedType !== 'all' || selectedHod !== 'all' || selectedMonth !== 'all' || searchTerm) && (
             <button
               onClick={() => {
                 setSearchTerm('');
@@ -650,6 +736,7 @@ export const RecruitmentChecklistView: React.FC<Props> = ({
                 setSelectedAssistedBy('all');
                 setSelectedType('all');
                 setSelectedHod('all');
+                setSelectedMonth('all');
                 setCurrentPage(1);
               }}
               className="text-xs font-semibold text-rose-500 hover:underline"
@@ -659,6 +746,47 @@ export const RecruitmentChecklistView: React.FC<Props> = ({
           )}
         </div>
       </div>
+
+      {/* 3D HOD Summary Cards Integration in Checklist */}
+      {hodGroups.length > 0 && (
+        <div className="p-4 sm:p-5 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm space-y-3">
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center space-x-2">
+              <Building className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
+              <h2 className="text-sm font-extrabold text-slate-900 dark:text-white">
+                3D HOD Summary Cards
+              </h2>
+              <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-full bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800">
+                {hodGroups.length} HODs
+              </span>
+            </div>
+            <button
+              type="button"
+              onClick={() => setShowHodCards((v) => !v)}
+              className="inline-flex items-center space-x-1 text-xs font-semibold text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200 cursor-pointer"
+            >
+              <span>{showHodCards ? 'Hide Cards' : 'Show Cards'}</span>
+              {showHodCards ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+            </button>
+          </div>
+
+          {showHodCards && (
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+              {hodGroups.map((group) => (
+                <HodSummary3DCard
+                  key={`checklist-hod-${group.name}`}
+                  group={group}
+                  isSelected={selectedHod === group.name}
+                  onSelect={(hodName) => {
+                    setSelectedHod((prev) => (prev === hodName ? 'all' : hodName));
+                    setCurrentPage(1);
+                  }}
+                />
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Main MRF Table */}
       <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm overflow-hidden">
