@@ -3,7 +3,11 @@ import React, { useState } from 'react';
 import { Building2, Lock, User, AlertCircle, ArrowRight, ShieldCheck } from 'lucide-react';
 import { useAuth } from '../context/AuthContext.tsx';
 
-export const LoginScreen: React.FC = () => {
+interface LoginScreenProps {
+  onOpenVault?: () => void;
+}
+
+export const LoginScreen: React.FC<LoginScreenProps> = ({ onOpenVault }) => {
   const { loginWithCredentials } = useAuth();
   const [employeeId, setEmployeeId] = useState('');
   const [password, setPassword] = useState('');
@@ -120,9 +124,20 @@ export const LoginScreen: React.FC = () => {
               </button>
             </form>
 
-            <div className="mt-6 pt-4 border-t border-slate-800/80 flex items-center justify-center space-x-2 text-slate-400 text-xs">
-              <ShieldCheck className="w-4 h-4 text-emerald-400" />
-              <span>Enterprise Single Sign-On · Renaissance Group</span>
+            <div className="mt-6 pt-4 border-t border-slate-800/80 flex flex-col items-center space-y-2 text-slate-400 text-xs">
+              <div className="flex items-center justify-center space-x-2">
+                <ShieldCheck className="w-4 h-4 text-emerald-400" />
+                <span>Enterprise Single Sign-On · Renaissance Group</span>
+              </div>
+              {onOpenVault && (
+                <button
+                  type="button"
+                  onClick={onOpenVault}
+                  className="text-[11px] font-semibold text-amber-300/90 hover:text-amber-200 underline underline-offset-4 transition cursor-pointer"
+                >
+                  Open Secure Upload Vault / Admin Portal
+                </button>
+              )}
             </div>
           </div>
         </div>

@@ -23,10 +23,13 @@ import {
   Layers,
   CheckCircle2,
   Lock,
+  Upload,
+  Box,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext.tsx';
+import { useFirebaseVault } from '../context/FirebaseVaultContext.tsx';
 
-export type PortalModule = 'recruitment' | 'tasks';
+export type PortalModule = 'recruitment' | 'tasks' | 'vault' | 'campus3d';
 
 export type NavTab =
   // Recruitment Portal (Flagship)
@@ -43,7 +46,10 @@ export type NavTab =
   | 'pending-approvals'
   | 'poked-overdue'
   | 'employees'
-  | 'reports';
+  | 'reports'
+  // Secure Document Vault (Firebase RBAC)
+  | 'vault-home'
+  | 'vault-admin';
 
 interface SidebarProps {
   activeTab: NavTab;
@@ -71,6 +77,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   myTaskCount,
 }) => {
   const { activePersona } = useAuth();
+  const { isAdmin: vaultIsAdmin } = useFirebaseVault();
 
   // Recruitment Navigation Items
   const recruitmentNavItems: Array<{
@@ -190,7 +197,41 @@ export const Sidebar: React.FC<SidebarProps> = ({
     },
   ];
 
-  const currentItems = currentModule === 'recruitment' ? recruitmentNavItems : taskNavItems;
+  // Secure Document Vault Items (Firebase RBAC)
+  const vaultNavItems: Array<{
+    id: NavTab;
+    label: string;
+    icon: React.ComponentType<{ className?: string }>;
+    badge?: number | null;
+    badgeColor?: string;
+    subtext?: string;
+    adminOnly?: boolean;
+    onClick?: () => void;
+  }> = [
+    {
+      id: 'vault-home',
+      label: 'Submit File / Data',
+      icon: Upload,
+      subtext: 'Sealed upload & text submission',
+    },
+    ...(vaultIsAdmin
+      ? [
+          {
+            id: 'vault-admin' as NavTab,
+            label: 'Admin Dashboard (/admin)',
+            icon: ShieldCheck,
+            subtext: 'View, download & manage all uploads',
+          },
+        ]
+      : []),
+  ];
+
+  const currentItems =
+    currentModule === 'recruitment'
+      ? recruitmentNavItems
+      : currentModule === 'vault'
+      ? vaultNavItems
+      : taskNavItems;
 
   const isEditor = [
     '01-02-0440', // Syeda Shaila Ashraf (Head of HR)
@@ -244,12 +285,47 @@ export const Sidebar: React.FC<SidebarProps> = ({
             <CheckSquare className="w-3.5 h-3.5" />
             <span>Tasks &amp; KPI</span>
           </button>
+          <button
+            onClick={() => {
+              setCurrentModule('vault');
+              setActiveTab('vault-home');
+            }}
+            title="Secure Document Vault"
+            className={`py-1.5 px-2.5 rounded-lg font-bold text-center transition-all flex items-center justify-center space-x-1 ${
+              currentModule === 'vault'
+                ? 'bg-red-600 text-white shadow-sm shadow-red-600/30'
+                : 'text-slate-400 hover:text-white'
+            }`}
+          >
+            <Lock className="w-3.5 h-3.5" />
+            <span>Vault</span>
+          </button>
         </div>
 
+        <button
+          onClick={() => setCurrentModule('campus3d')}
+          className="w-full py-1.5 px-3 rounded-xl bg-slate-950/80 hover:bg-slate-800 border border-slate-800 text-xs font-bold text-amber-300 flex items-center justify-center space-x-2 transition"
+        >
+          <Box className="w-3.5 h-3.5" />
+          <span>3D Campus Twin</span>
+        </button>
+
         <div className="px-3 pb-1 text-[10px] font-bold text-slate-400 uppercase tracking-wider flex items-center justify-between">
-          <span>{currentModule === 'recruitment' ? 'Recruitment System' : 'Task & KPI Portal'}</span>
+          <span>
+            {currentModule === 'recruitment'
+              ? 'Recruitment System'
+              : currentModule === 'vault'
+              ? 'Secure Vault (RBAC)'
+              : 'Task & KPI Portal'}
+          </span>
           <span className="text-[9px] bg-slate-800 text-slate-300 px-1.5 py-0.2 rounded font-mono font-medium border border-slate-700/60">
-            {currentModule === 'recruitment' ? `${totalRequisitionsCount} MRFs` : 'Active'}
+            {currentModule === 'recruitment'
+              ? `${totalRequisitionsCount} MRFs`
+              : currentModule === 'vault'
+              ? vaultIsAdmin
+                ? 'Admin'
+                : 'Sealed'
+              : 'Active'}
           </span>
         </div>
 

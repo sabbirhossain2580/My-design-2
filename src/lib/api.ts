@@ -65,7 +65,13 @@ async function parseJsonResponse(res: Response): Promise<any> {
     }
   }
   const text = await res.text().catch(() => '');
-  return { error: text || res.statusText || `Server error (${res.status})` };
+  const trimmed = text.trim();
+  if (!trimmed || /^<!doctype|^<html/i.test(trimmed)) {
+    return {
+      error: `API endpoint unavailable (HTTP ${res.status || 404}). Verify Netlify Functions and DATABASE_URL are configured.`,
+    };
+  }
+  return { error: trimmed || res.statusText || `Server error (${res.status})` };
 }
 
 export const DEFAULT_HR_EMPLOYEES: Employee[] = [
@@ -745,6 +751,59 @@ export const api = {
       throw new Error(result.error || 'Failed to submit rating');
     }
     return result;
+  },
+
+  // Three.js 3D Corporate Campus Scene Presets
+  async getScenePresets(): Promise<
+    Array<{
+      id: number;
+      name: string;
+      cameraPreset: string;
+      atmosphere: string;
+      finish: string;
+      explodedRatio: number;
+      createdBy: string;
+      createdAt?: string;
+    }>
+  > {
+    try {
+      const res = await fetch('/api/scene-presets', { headers: getHeaders() });
+      const contentType = res.headers.get('content-type') || '';
+      if (res.ok && contentType.includes('application/json')) {
+        return await res.json();
+      }
+    } catch {}
+    return [];
+  },
+
+  async saveScenePreset(data: {
+    name: string;
+    cameraPreset: string;
+    atmosphere: string;
+    finish: string;
+    explodedRatio: number;
+  }) {
+    const res = await fetch('/api/scene-presets', {
+      method: 'POST',
+      headers: getHeaders(),
+      body: JSON.stringify(data),
+    });
+    const result = await parseJsonResponse(res);
+    if (!res.ok || result?.error) {
+      throw new Error(result?.error || 'Failed to save scene preset');
+    }
+    return result;
+  },
+
+  async deleteScenePreset(id: number): Promise<void> {
+    const res = await fetch(`/api/scene-presets/${id}`, {
+      method: 'DELETE',
+      headers: getHeaders(),
+    });
+    const result = await parseJsonResponse(res);
+    if (!res.ok || result?.error) {
+      throw new Error(result?.error || 'Failed to delete scene preset');
+    }
   },
 };
 

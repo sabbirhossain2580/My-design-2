@@ -2,7 +2,7 @@
 import express, { Request, Response, NextFunction } from 'express';
 import path from 'path';
 import dotenv from 'dotenv';
-import { db, pool, withDbRetry } from './src/db/index.ts';
+import { db, pool, withDbRetry, isDatabaseConfigured } from './src/db/index.ts';
 import {
   employees,
   responsibilities,
@@ -16,6 +16,7 @@ import {
   recruitmentRequisitions,
   recruitmentAuditLogs,
   recruitmentRatings,
+  scenePresets,
 } from './src/db/schema.ts';
 import { eq, desc, asc, and, or, sql } from 'drizzle-orm';
 import { requireAuth, AuthRequest } from './src/middleware/auth.ts';
@@ -79,12 +80,19 @@ app.use('/api', (req: Request, res: Response, next) => {
 });
 
 // Ensure database is initialized before handling DB-backed API routes
-app.use('/api', async (req: Request, _res: Response, next: NextFunction) => {
+app.use('/api', async (req: Request, res: Response, next: NextFunction) => {
   if (req.path.startsWith('/auth/') || req.path === '/download-repo') {
     return next();
   }
+  if (!isDatabaseConfigured()) {
+    return res.status(503).json({
+      error: 'Database is not configured. Please set DATABASE_URL (Supabase PostgreSQL URI) in your hosting environment variables.',
+    });
+  }
   if (!isDatabaseReady()) {
-    await ensureDatabaseReady().catch(() => {});
+    await ensureDatabaseReady()
+      .then(() => seedDatabase(false))
+      .catch(() => {});
   }
   next();
 });
@@ -576,6 +584,7 @@ app.post('/api/tasks', requireAuth, async (req: AuthRequest, res: Response) => {
       title,
       description,
       assignedEmployeeId,
+      assignedEmployeeCode,
       relatedResponsibilityId,
       relatedKpiId,
       priority,
@@ -583,21 +592,32 @@ app.post('/api/tasks', requireAuth, async (req: AuthRequest, res: Response) => {
       originalDeadline,
     } = req.body;
 
-    if (!title || !description || !assignedEmployeeId || !originalDeadline) {
+    if (!title || !description || (!assignedEmployeeId && !assignedEmployeeCode) || !originalDeadline) {
       return res.status(400).json({ error: 'Title, description, assigned employee, and deadline are required.' });
     }
 
-    const parsedEmpId = parseInt(String(assignedEmployeeId), 10);
-    if (isNaN(parsedEmpId) || parsedEmpId <= 0 || parsedEmpId > 2147483647) {
-      return res.status(400).json({ error: 'Invalid assigned employee selection. Please refresh the employee list and try again.' });
+    const parsedEmpId = parseInt(String(assignedEmployeeId || ''), 10);
+    let assignee: { id: number } | undefined;
+
+    if (assignedEmployeeCode) {
+      const [byCode] = await withDbRetry(() =>
+        db.select({ id: employees.id }).from(employees).where(eq(employees.employeeCode, String(assignedEmployeeCode).trim()))
+      );
+      assignee = byCode;
     }
 
-    const [assignee] = await withDbRetry(() =>
-      db.select({ id: employees.id }).from(employees).where(eq(employees.id, parsedEmpId))
-    );
+    if (!assignee && !isNaN(parsedEmpId) && parsedEmpId > 0 && parsedEmpId <= 2147483647) {
+      const [byId] = await withDbRetry(() =>
+        db.select({ id: employees.id }).from(employees).where(eq(employees.id, parsedEmpId))
+      );
+      assignee = byId;
+    }
+
     if (!assignee) {
       return res.status(400).json({ error: 'Selected employee was not found in the database.' });
     }
+
+    const resolvedEmployeeId = assignee.id;
 
     const taskCode = `TSK-${Math.floor(1000 + Math.random() * 9000)}`;
     const today = getTodayDhaka();
@@ -607,7 +627,7 @@ app.post('/api/tasks', requireAuth, async (req: AuthRequest, res: Response) => {
         taskCode,
         title,
         description,
-        assignedEmployeeId: parsedEmpId,
+        assignedEmployeeId: resolvedEmployeeId,
         assigningManagerName: req.user?.name || 'HR Team',
         relatedResponsibilityId: relatedResponsibilityId ? parseInt(relatedResponsibilityId, 10) : null,
         relatedKpiId: relatedKpiId ? parseInt(relatedKpiId, 10) : null,
@@ -638,7 +658,7 @@ app.post('/api/tasks', requireAuth, async (req: AuthRequest, res: Response) => {
     // Notification to assigned employee
     await withDbRetry(() =>
       db.insert(notifications).values({
-        recipientEmployeeId: parsedEmpId,
+        recipientEmployeeId: resolvedEmployeeId,
         title: `New Task Assigned: ${title}`,
         message: `You have been assigned "${title}" due on ${originalDeadline} by ${req.user?.name}.`,
         type: 'task_assigned',
@@ -2495,6 +2515,61 @@ app.post('/api/recruitment/ratings', requireAuth, async (_req: AuthRequest, res:
   });
 });
 
+// 10. Three.js 3D Corporate Campus Scene Presets (Cloud SQL Backed)
+app.get('/api/scene-presets', requireAuth, async (_req: AuthRequest, res: Response) => {
+  try {
+    const presets = await db
+      .select()
+      .from(scenePresets)
+      .orderBy(desc(scenePresets.createdAt))
+      .limit(50);
+    res.json(presets);
+  } catch (error: any) {
+    console.error('Failed to fetch scene presets:', error);
+    res.status(500).json({ error: 'Failed to load scene presets.' });
+  }
+});
+
+app.post('/api/scene-presets', requireAuth, async (req: AuthRequest, res: Response) => {
+  try {
+    const { name, cameraPreset, atmosphere, finish, explodedRatio } = req.body || {};
+    const cleanName = String(name || '').trim().slice(0, 80);
+    if (!cleanName) {
+      return res.status(400).json({ error: 'Preset name is required.' });
+    }
+    const createdBy = req.user?.email || req.user?.name || 'authorized-user';
+    const [inserted] = await db
+      .insert(scenePresets)
+      .values({
+        name: cleanName,
+        cameraPreset: String(cameraPreset || 'overview'),
+        atmosphere: String(atmosphere || 'twilight'),
+        finish: String(finish || 'brass'),
+        explodedRatio: Number.isFinite(Number(explodedRatio)) ? Number(explodedRatio) : 0,
+        createdBy,
+      })
+      .returning();
+    res.status(201).json(inserted);
+  } catch (error: any) {
+    console.error('Failed to save scene preset:', error);
+    res.status(500).json({ error: 'Failed to save scene preset.' });
+  }
+});
+
+app.delete('/api/scene-presets/:id', requireAuth, async (req: AuthRequest, res: Response) => {
+  try {
+    const id = Number(req.params.id);
+    if (!Number.isInteger(id) || id <= 0) {
+      return res.status(400).json({ error: 'Invalid preset ID.' });
+    }
+    await db.delete(scenePresets).where(eq(scenePresets.id, id));
+    res.json({ success: true });
+  } catch (error: any) {
+    console.error('Failed to delete scene preset:', error);
+    res.status(500).json({ error: 'Failed to delete scene preset.' });
+  }
+});
+
 // 404 Handler for unmatched API routes (prevents fallback to HTML index.html)
 app.use('/api/*', (_req: Request, res: Response) => {
   res.status(404).json({ error: 'API route not found' });
@@ -2542,13 +2617,6 @@ async function startServer() {
       console.error('Server listen error:', err);
     }
   });
-
-  // Initialize DB schema & tables check first, followed by seed verification
-  ensureDatabaseReady()
-    .then(() => seedDatabase(false))
-    .catch((err) => {
-      console.warn('Initial schema & seed check warning:', err);
-    });
 }
 
 // Start Server only if running as standalone process (not on Vercel/Netlify/AWS serverless)

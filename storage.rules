@@ -1,0 +1,13 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    match /uploads/{userId}/{allPaths=**} {
+      allow write: if request.auth != null && request.auth.uid == userId;
+      allow read: if request.auth != null && (
+        (request.auth.token.email == 'sabbir1610734190@gmail.com' && request.auth.token.email_verified == true) ||
+        firestore.get(/databases/ai-studio-hrtaskrecrutimen-ef1265ca-402e-47d8-ae80-49a2c981932e/documents/users/$(request.auth.uid)).data.role == 'admin' ||
+        firestore.get(/databases/(default)/documents/users/$(request.auth.uid)).data.role == 'admin'
+      );
+    }
+  }
+}

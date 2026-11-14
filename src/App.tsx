@@ -1,9 +1,12 @@
 // src/App.tsx
 import React, { useState, useEffect, useRef } from 'react';
 import { AuthProvider, useAuth } from './context/AuthContext.tsx';
+import { FirebaseVaultProvider } from './context/FirebaseVaultContext.tsx';
 import { Navbar } from './components/Navbar.tsx';
 import { Sidebar, NavTab, PortalModule } from './components/Sidebar.tsx';
 import { LoginScreen } from './components/LoginScreen.tsx';
+import { FirebaseVaultPortal } from './components/vault/FirebaseVaultPortal.tsx';
+import { CorporateCampusScene } from './components/three/CorporateCampusScene.tsx';
 import { DashboardView } from './components/DashboardView.tsx';
 import { OverdueAlertCenter } from './components/OverdueAlertCenter.tsx';
 import { EmployeeDirectoryView } from './components/EmployeeDirectoryView.tsx';
@@ -39,9 +42,46 @@ import {
 const MainAppContent: React.FC = () => {
   const { activePersona, isAuthenticated } = useAuth();
 
-  // Active module & tab: default to Recruitment Overview!
-  const [currentModule, setCurrentModule] = useState<PortalModule>('recruitment');
-  const [activeTab, setActiveTab] = useState<NavTab>('recruitment-overview');
+  // Standalone route (/admin or /vault) support for direct Firebase Vault visitors
+  const [standaloneVaultRoute, setStandaloneVaultRoute] = useState<'home' | 'admin' | null>(() => {
+    if (typeof window === 'undefined') return null;
+    if (window.location.pathname === '/admin') return 'admin';
+    if (window.location.pathname === '/vault') return 'home';
+    return null;
+  });
+
+  // Active module & tab: default to Recruitment Overview unless /admin or /vault opened directly
+  const [currentModule, setCurrentModule] = useState<PortalModule>(() => {
+    if (typeof window !== 'undefined' && (window.location.pathname === '/admin' || window.location.pathname === '/vault')) {
+      return 'vault';
+    }
+    return 'recruitment';
+  });
+  const [activeTab, setActiveTab] = useState<NavTab>(() => {
+    if (typeof window !== 'undefined') {
+      if (window.location.pathname === '/admin') return 'vault-admin';
+      if (window.location.pathname === '/vault') return 'vault-home';
+    }
+    return 'recruitment-overview';
+  });
+
+  useEffect(() => {
+    const onPopState = () => {
+      if (window.location.pathname === '/admin') {
+        setStandaloneVaultRoute('admin');
+        setCurrentModule('vault');
+        setActiveTab('vault-admin');
+      } else if (window.location.pathname === '/vault') {
+        setStandaloneVaultRoute('home');
+        setCurrentModule('vault');
+        setActiveTab('vault-home');
+      } else {
+        setStandaloneVaultRoute(null);
+      }
+    };
+    window.addEventListener('popstate', onPopState);
+    return () => window.removeEventListener('popstate', onPopState);
+  }, []);
 
   // Dark Mode State
   const [darkMode, setDarkMode] = useState(false);
@@ -215,9 +255,46 @@ const MainAppContent: React.FC = () => {
     await loadRecruitmentData(true);
   };
 
-  // If not authenticated, render Login Screen
+  // If not authenticated to HR Employee ID portal, either render direct Firebase Vault (/admin or /vault) or Login Screen
   if (!isAuthenticated) {
-    return <LoginScreen />;
+    if (standaloneVaultRoute !== null) {
+      return (
+        <div className={`min-h-screen ${darkMode ? 'dark bg-slate-950 text-slate-100' : 'bg-slate-100 text-slate-800'} p-4 md:p-8 font-sans antialiased`}>
+          <FirebaseVaultPortal
+            initialRoute={standaloneVaultRoute}
+            onRouteChange={(nextRoute) => setStandaloneVaultRoute(nextRoute)}
+            onExitStandalone={() => {
+              setStandaloneVaultRoute(null);
+              if (typeof window !== 'undefined') {
+                window.history.pushState({}, '', '/');
+              }
+            }}
+          />
+        </div>
+      );
+    }
+    return (
+      <LoginScreen
+        onOpenVault={() => {
+          setStandaloneVaultRoute('home');
+          if (typeof window !== 'undefined') {
+            window.history.pushState({}, '', '/vault');
+          }
+        }}
+      />
+    );
+  }
+
+  if (currentModule === 'campus3d') {
+    return (
+      <CorporateCampusScene
+        requisitions={recruitmentRequisitions}
+        onExit={() => {
+          setCurrentModule('recruitment');
+          setActiveTab('recruitment-overview');
+        }}
+      />
+    );
   }
 
   // Active counts
@@ -265,6 +342,8 @@ const MainAppContent: React.FC = () => {
           setCurrentModule(mod);
           if (mod === 'recruitment') {
             setActiveTab('recruitment-overview');
+          } else if (mod === 'vault') {
+            setActiveTab('vault-home');
           } else {
             setActiveTab('dashboard');
           }
@@ -596,6 +675,15 @@ const MainAppContent: React.FC = () => {
               />
             )}
 
+            {(activeTab === 'vault-home' || activeTab === 'vault-admin') && (
+              <FirebaseVaultPortal
+                initialRoute={activeTab === 'vault-admin' ? 'admin' : 'home'}
+                onRouteChange={(nextRoute) => {
+                  setActiveTab(nextRoute === 'admin' ? 'vault-admin' : 'vault-home');
+                }}
+              />
+            )}
+
           </div>
         </main>
       </div>
@@ -621,7 +709,9 @@ const MainAppContent: React.FC = () => {
 export default function App() {
   return (
     <AuthProvider>
-      <MainAppContent />
+      <FirebaseVaultProvider>
+        <MainAppContent />
+      </FirebaseVaultProvider>
     </AuthProvider>
   );
 }

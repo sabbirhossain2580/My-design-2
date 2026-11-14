@@ -1,0 +1,97 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "Registered user profile and role-based access level",
+      "type": "object",
+      "properties": {
+        "uid": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$",
+          "description": "Firebase Auth UID matching the document ID"
+        },
+        "email": {
+          "type": "string",
+          "format": "email",
+          "maxLength": 254,
+          "description": "Authenticated user email address"
+        },
+        "role": {
+          "type": "string",
+          "enum": ["user", "admin"],
+          "maxLength": 16,
+          "description": "Strict RBAC role ('user' by default, 'admin' for administrators)"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp of user registration"
+        }
+      },
+      "required": ["uid", "email", "role", "createdAt"]
+    },
+    "Upload": {
+      "title": "Upload",
+      "description": "Metadata for submitted file or text data; readable and manageable exclusively by admins",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$",
+          "description": "Document ID matching the upload record"
+        },
+        "uploaderUid": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$",
+          "description": "Firebase Auth UID of the uploader"
+        },
+        "uploaderEmail": {
+          "type": "string",
+          "format": "email",
+          "maxLength": 254,
+          "description": "Email address of the uploader"
+        },
+        "fileName": {
+          "type": "string",
+          "maxLength": 255,
+          "description": "Original file name or submission title"
+        },
+        "fileUrl": {
+          "type": "string",
+          "format": "uri",
+          "maxLength": 2048,
+          "description": "Firebase Storage download URL (empty string for text-only submissions)"
+        },
+        "storagePath": {
+          "type": "string",
+          "maxLength": 512,
+          "description": "Firebase Storage path under uploads/{uid}/..."
+        },
+        "description": {
+          "type": "string",
+          "maxLength": 2000,
+          "description": "User-submitted notes or text payload"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp of upload submission"
+        }
+      },
+      "required": ["id", "uploaderUid", "uploaderEmail", "fileName", "fileUrl", "description", "createdAt"]
+    }
+  },
+  "firestore": {
+    "users/{userId}": {
+      "schema": { "$ref": "#/entities/User" },
+      "description": "Stores user roles and account metadata; only admins can promote roles or list all users"
+    },
+    "uploads/{docId}": {
+      "schema": { "$ref": "#/entities/Upload" },
+      "description": "Stores submitted upload metadata; any signed-in user may create, only admins may read, list, update, or delete"
+    }
+  }
+}

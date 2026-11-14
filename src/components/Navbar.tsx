@@ -16,16 +16,20 @@ import {
   CheckSquare,
   Sparkles,
   Layers,
+  Lock,
+  Box,
 } from 'lucide-react';
 import { NotificationItem } from '../types/index.ts';
+import { useFirebaseVault } from '../context/FirebaseVaultContext.tsx';
+import { PortalModule } from './Sidebar.tsx';
 
 interface NavbarProps {
   overdueCount: number;
   notifications: NotificationItem[];
   onOpenNotifications: () => void;
   onNavigateToOverdue: () => void;
-  currentModule?: 'recruitment' | 'tasks';
-  onChangeModule?: (mod: 'recruitment' | 'tasks') => void;
+  currentModule?: PortalModule;
+  onChangeModule?: (mod: PortalModule) => void;
   darkMode?: boolean;
   onToggleDarkMode?: () => void;
 }
@@ -41,6 +45,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   onToggleDarkMode,
 }) => {
   const { activePersona, logout } = useAuth();
+  const { isAdmin: vaultIsAdmin } = useFirebaseVault();
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const unreadCount = notifications.filter((n) => !n.isRead).length;
 
@@ -69,12 +74,21 @@ export const Navbar: React.FC<NavbarProps> = ({
             <span className="text-[10px] bg-slate-800 text-amber-300 px-2 py-0.5 rounded font-mono font-bold tracking-wider border border-amber-500/30">
               CORPORATE HR
             </span>
+            {vaultIsAdmin && (
+              <span className="text-[10px] bg-red-600 text-white px-2 py-0.5 rounded font-mono font-extrabold tracking-wider shadow-xs">
+                ADMIN
+              </span>
+            )}
           </div>
           <p className="text-[11px] text-slate-400 hidden sm:flex items-center space-x-1.5">
             <span>Human Resources &amp; Organizational Development</span>
             <span className="text-slate-600">·</span>
             <span className="text-slate-300 font-medium">
-              {currentModule === 'recruitment' ? 'Recruitment Status & Turnaround Portal' : 'Task & KPI Management System'}
+              {currentModule === 'recruitment'
+                ? 'Recruitment Status & Turnaround Portal'
+                : currentModule === 'vault'
+                ? 'Secure Document Vault & RBAC'
+                : 'Task & KPI Management System'}
             </span>
           </p>
         </div>
@@ -104,6 +118,28 @@ export const Navbar: React.FC<NavbarProps> = ({
           >
             <CheckSquare className="w-3.5 h-3.5" />
             <span>Tasks &amp; KPI System</span>
+          </button>
+          <button
+            onClick={() => onChangeModule('vault')}
+            className={`flex items-center space-x-2 px-3.5 py-1.5 rounded-lg font-bold transition-all ${
+              currentModule === 'vault'
+                ? 'bg-gradient-to-r from-red-600 to-rose-700 text-white shadow-sm shadow-red-600/30'
+                : 'text-slate-400 hover:text-white'
+            }`}
+          >
+            <Lock className="w-3.5 h-3.5" />
+            <span>Secure Vault</span>
+          </button>
+          <button
+            onClick={() => onChangeModule('campus3d')}
+            className={`flex items-center space-x-2 px-3.5 py-1.5 rounded-lg font-bold transition-all ${
+              currentModule === 'campus3d'
+                ? 'bg-gradient-to-r from-amber-500 to-amber-600 text-slate-950 shadow-sm'
+                : 'text-amber-300 hover:text-white'
+            }`}
+          >
+            <Box className="w-3.5 h-3.5" />
+            <span>3D Campus</span>
           </button>
         </div>
       )}
@@ -191,7 +227,7 @@ export const Navbar: React.FC<NavbarProps> = ({
               {onChangeModule && (
                 <div className="px-4 py-2.5 border-b border-slate-100 dark:border-slate-800 lg:hidden">
                   <div className="text-[10px] text-slate-400 font-bold uppercase mb-1.5">Module Selection</div>
-                  <div className="grid grid-cols-2 gap-1.5 text-xs">
+                  <div className="grid grid-cols-3 gap-1.5 text-xs">
                     <button
                       onClick={() => {
                         onChangeModule('recruitment');
@@ -214,7 +250,27 @@ export const Navbar: React.FC<NavbarProps> = ({
                     >
                       Tasks &amp; KPI
                     </button>
+                    <button
+                      onClick={() => {
+                        onChangeModule('vault');
+                        setDropdownOpen(false);
+                      }}
+                      className={`p-2 rounded-xl text-center font-bold transition-colors ${
+                        currentModule === 'vault' ? 'bg-red-600 text-white' : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300'
+                      }`}
+                    >
+                      Vault
+                    </button>
                   </div>
+                  <button
+                    onClick={() => {
+                      onChangeModule('campus3d');
+                      setDropdownOpen(false);
+                    }}
+                    className="mt-1.5 w-full p-2 rounded-xl text-center font-bold bg-amber-500/20 text-amber-700 dark:text-amber-300 hover:bg-amber-500/30 transition-colors"
+                  >
+                    Open 3D Campus Twin
+                  </button>
                 </div>
               )}
 

@@ -61,6 +61,7 @@ type SortField =
   | 'sl'
   | 'positionTitle'
   | 'department'
+  | 'hod'
   | 'requisitionDate'
   | 'company'
   | 'dateOfJoining'
@@ -90,6 +91,7 @@ export const RecruitmentChecklistView: React.FC<Props> = ({
   const [selectedStatus, setSelectedStatus] = useState<string>('all');
   const [selectedAssistedBy, setSelectedAssistedBy] = useState<string>('all');
   const [selectedType, setSelectedType] = useState<string>('all');
+  const [selectedHod, setSelectedHod] = useState<string>('all');
 
   // Sorting
   const [sortField, setSortField] = useState<SortField>('sl');
@@ -159,6 +161,7 @@ export const RecruitmentChecklistView: React.FC<Props> = ({
         !search ||
         r.positionTitle.toLowerCase().includes(search) ||
         r.department.toLowerCase().includes(search) ||
+        (r.hod && r.hod.toLowerCase().includes(search)) ||
         r.requisitionCode.toLowerCase().includes(search) ||
         r.company.toLowerCase().includes(search) ||
         r.recruitmentAssistedByName.toLowerCase().includes(search) ||
@@ -180,9 +183,12 @@ export const RecruitmentChecklistView: React.FC<Props> = ({
       // Type
       if (selectedType !== 'all' && r.recruitmentType !== selectedType) return false;
 
+      // HOD
+      if (selectedHod !== 'all' && (r.hod || 'Unassigned') !== selectedHod) return false;
+
       return true;
     });
-  }, [requisitions, searchTerm, selectedCompany, selectedStatus, selectedAssistedBy, selectedType]);
+  }, [requisitions, searchTerm, selectedCompany, selectedStatus, selectedAssistedBy, selectedType, selectedHod]);
 
   // Sort Logic
   const sortedRecords = useMemo(() => {
@@ -271,6 +277,7 @@ export const RecruitmentChecklistView: React.FC<Props> = ({
       r.sl,
       r.positionTitle,
       r.department,
+      r.hod || '-',
       r.company,
       r.requisitionDate,
       r.dateOfJoining || '-',
@@ -280,7 +287,7 @@ export const RecruitmentChecklistView: React.FC<Props> = ({
     ]);
 
     autoTable(doc, {
-      head: [['SL', 'Position Title', 'Dept', 'Co.', 'Req Date', 'DOJ', 'Status', 'TTF/Age', 'Assisted By']],
+      head: [['SL', 'Position Title', 'Dept', 'HOD', 'Co.', 'Req Date', 'DOJ', 'Status', 'TTF/Age', 'Assisted By']],
       body: tableData,
       startY: 32,
       styles: { fontSize: 7, cellPadding: 2 },
@@ -628,8 +635,13 @@ export const RecruitmentChecklistView: React.FC<Props> = ({
         <div className="flex items-center justify-between text-xs text-slate-500 pt-1 border-t border-slate-100 dark:border-slate-800">
           <div>
             Showing <span className="font-bold text-slate-800 dark:text-slate-200">{filteredRecords.length}</span> of {requisitions.length} requisitions
+            {selectedHod !== 'all' && (
+              <span className="ml-2 inline-flex items-center px-2 py-0.5 rounded-md bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800 font-semibold">
+                HOD: {selectedHod}
+              </span>
+            )}
           </div>
-          {(selectedCompany !== 'all' || selectedStatus !== 'all' || selectedAssistedBy !== 'all' || selectedType !== 'all' || searchTerm) && (
+          {(selectedCompany !== 'all' || selectedStatus !== 'all' || selectedAssistedBy !== 'all' || selectedType !== 'all' || selectedHod !== 'all' || searchTerm) && (
             <button
               onClick={() => {
                 setSearchTerm('');
@@ -637,6 +649,7 @@ export const RecruitmentChecklistView: React.FC<Props> = ({
                 setSelectedStatus('all');
                 setSelectedAssistedBy('all');
                 setSelectedType('all');
+                setSelectedHod('all');
                 setCurrentPage(1);
               }}
               className="text-xs font-semibold text-rose-500 hover:underline"
@@ -673,11 +686,20 @@ export const RecruitmentChecklistView: React.FC<Props> = ({
                 </th>
                 <th
                   onClick={() => handleSort('department')}
-                  className="py-3 px-3 cursor-pointer hover:bg-slate-800 transition-colors min-w-[140px]"
+                  className="py-3 px-3 cursor-pointer hover:bg-slate-800 transition-colors min-w-[130px]"
                 >
                   <div className="flex items-center space-x-1">
                     <span>Department</span>
                     {sortField === 'department' && (sortAsc ? <ArrowUp className="w-3 h-3" /> : <ArrowDown className="w-3 h-3" />)}
+                  </div>
+                </th>
+                <th
+                  onClick={() => handleSort('hod')}
+                  className="py-3 px-3 cursor-pointer hover:bg-slate-800 transition-colors min-w-[185px]"
+                >
+                  <div className="flex items-center space-x-1">
+                    <span>HOD</span>
+                    {sortField === 'hod' && (sortAsc ? <ArrowUp className="w-3 h-3" /> : <ArrowDown className="w-3 h-3" />)}
                   </div>
                 </th>
                 <th
@@ -733,7 +755,7 @@ export const RecruitmentChecklistView: React.FC<Props> = ({
             <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
               {paginatedRecords.length === 0 ? (
                 <tr>
-                  <td colSpan={10} className="text-center py-12 text-slate-400">
+                  <td colSpan={11} className="text-center py-12 text-slate-400">
                     No recruitment records match the selected filter criteria.
                   </td>
                 </tr>
@@ -772,6 +794,64 @@ export const RecruitmentChecklistView: React.FC<Props> = ({
                       {/* Department */}
                       <td className="py-3 px-3 text-slate-700 dark:text-slate-300">
                         {r.department}
+                      </td>
+
+                      {/* HOD 2D Shape Card */}
+                      <td className="py-3 px-3">
+                        {(() => {
+                          const rawHod = (r.hod || 'Unassigned').trim();
+                          const match = rawHod.match(/^(.*?)\s*\(([^)]+)\)$/);
+                          const hodDisplayName = match ? match[1].trim() : rawHod;
+                          const hodDesignation = match ? match[2].trim() : '';
+                          const initials = hodDisplayName
+                            .split(/\s+/)
+                            .filter(Boolean)
+                            .map((part) => part[0])
+                            .slice(0, 2)
+                            .join('')
+                            .toUpperCase();
+                          const isHodActive = selectedHod === rawHod;
+
+                          return (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setSelectedHod(isHodActive ? 'all' : rawHod);
+                                setCurrentPage(1);
+                              }}
+                              title={isHodActive ? 'Click to show all HODs' : `Filter by HOD: ${rawHod}`}
+                              className={`inline-flex items-center space-x-2 px-2.5 py-1.5 rounded-lg border text-left transition-all cursor-pointer ${
+                                isHodActive
+                                  ? 'bg-indigo-600 text-white border-indigo-700 shadow-[2px_2px_0px_0px_rgba(30,27,75,0.45)]'
+                                  : 'bg-slate-50 dark:bg-slate-800/90 text-slate-800 dark:text-slate-100 border-slate-300 dark:border-slate-700 shadow-[2px_2px_0px_0px_rgba(79,70,229,0.22)] hover:border-indigo-400 hover:bg-indigo-50/70 dark:hover:bg-indigo-950/40'
+                              }`}
+                            >
+                              <span
+                                className={`w-6 h-6 rounded-md flex items-center justify-center text-[10px] font-extrabold font-mono shrink-0 border ${
+                                  isHodActive
+                                    ? 'bg-white/20 text-white border-white/30'
+                                    : 'bg-indigo-100 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-300 border-indigo-200 dark:border-indigo-800'
+                                }`}
+                              >
+                                {initials || 'HD'}
+                              </span>
+                              <span className="leading-tight">
+                                <span className="block text-[11px] font-bold whitespace-nowrap">
+                                  {hodDisplayName}
+                                </span>
+                                {hodDesignation && (
+                                  <span
+                                    className={`block text-[10px] font-medium whitespace-nowrap ${
+                                      isHodActive ? 'text-indigo-100' : 'text-slate-500 dark:text-slate-400'
+                                    }`}
+                                  >
+                                    {hodDesignation}
+                                  </span>
+                                )}
+                              </span>
+                            </button>
+                          );
+                        })()}
                       </td>
 
                       {/* Company */}

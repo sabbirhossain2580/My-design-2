@@ -3,6 +3,7 @@ import { Request, Response, NextFunction } from 'express';
 import { adminAuth } from '../lib/firebase-admin.ts';
 import { db } from '../db/index.ts';
 import { users, employees } from '../db/schema.ts';
+import { getOrCreateUser } from '../db/users.ts';
 import { eq, or } from 'drizzle-orm';
 import { verifySessionToken, AuthSessionPayload } from '../server/authService.ts';
 
@@ -88,6 +89,11 @@ export const requireAuth = async (
       uid = decoded.uid;
       email = decoded.email || '';
       name = decoded.name || email.split('@')[0];
+      try {
+        await getOrCreateUser(uid, email, name);
+      } catch (syncErr) {
+        console.warn('User Cloud SQL sync note:', syncErr);
+      }
     } catch {
       return res.status(401).json({
         error: 'Unauthorized: Invalid or expired session token. Please log in again.',

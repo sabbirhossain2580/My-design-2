@@ -34,7 +34,7 @@ import {
   DelayCategory,
 } from '../types/index.ts';
 import { useAuth } from '../context/AuthContext.tsx';
-import { api } from '../lib/api.ts';
+import { api, DEFAULT_HR_EMPLOYEES } from '../lib/api.ts';
 
 interface TaskRegisterViewProps {
   tasks: Task[];
@@ -103,6 +103,19 @@ export const TaskRegisterView: React.FC<TaskRegisterViewProps> = ({
 
   // All employees can create tasks (canCreate = true)
   const canCreate = true;
+
+  // Always ensure all core HR team members (Naiem, Sabbir, Nuzhat, Fariha, Maisha, Shaila) are selectable
+  const assigneeOptions: Employee[] = React.useMemo(() => {
+    const merged = [...employees];
+    const seenCodes = new Set(merged.map((e) => (e.employeeCode || '').trim()));
+    for (const defEmp of DEFAULT_HR_EMPLOYEES) {
+      if (!seenCodes.has(defEmp.employeeCode)) {
+        merged.push(defEmp);
+        seenCodes.add(defEmp.employeeCode);
+      }
+    }
+    return merged;
+  }, [employees]);
 
   // Filter tasks based on viewMode and user filters
   const filteredTasks = tasks.filter((t) => {
@@ -201,7 +214,13 @@ export const TaskRegisterView: React.FC<TaskRegisterViewProps> = ({
     e.preventDefault();
     setLoadingAction(true);
     try {
-      await onCreateTask(createForm);
+      const selectedEmp = assigneeOptions.find(
+        (emp) => String(emp.id) === String(createForm.assignedEmployeeId)
+      );
+      await onCreateTask({
+        ...createForm,
+        assignedEmployeeCode: selectedEmp?.employeeCode,
+      });
       setCreateModalOpen(false);
       setCreateForm({
         priority: 'Medium',
@@ -420,8 +439,8 @@ export const TaskRegisterView: React.FC<TaskRegisterViewProps> = ({
               onClick={() => {
                 const defaultAssignee =
                   viewMode === 'my-tasks'
-                    ? employees.find((e) => e.employeeCode === activePersona.employeeCode)?.id || employees[0]?.id
-                    : employees[1]?.id || employees[0]?.id;
+                    ? assigneeOptions.find((e) => e.employeeCode === activePersona.employeeCode)?.id || assigneeOptions[0]?.id
+                    : assigneeOptions[1]?.id || assigneeOptions[0]?.id;
 
                 setCreateForm({
                   assignedEmployeeId: defaultAssignee,
@@ -877,8 +896,8 @@ export const TaskRegisterView: React.FC<TaskRegisterViewProps> = ({
                     className="w-full border border-slate-300 rounded-lg p-2 bg-white"
                   >
                     <option value="">Select Assignee</option>
-                    {employees.map((emp) => (
-                      <option key={emp.id} value={emp.id}>
+                    {assigneeOptions.map((emp) => (
+                      <option key={emp.employeeCode || emp.id} value={emp.id}>
                         {emp.name} ({emp.employeeCode})
                       </option>
                     ))}

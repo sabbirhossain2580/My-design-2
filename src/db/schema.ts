@@ -283,3 +283,15 @@ export const recruitmentAuditLogsRelations = relations(recruitmentAuditLogs, ({ 
   }),
 }));
 
+// Three.js 3D Corporate Campus Scene Presets
+export const scenePresets = pgTable('scene_presets', {
+  id: serial('id').primaryKey(),
+  name: text('name').notNull(),
+  cameraPreset: text('camera_preset').notNull().default('overview'),
+  atmosphere: text('atmosphere').notNull().default('twilight'),
+  finish: text('finish').notNull().default('brass'),
+  explodedRatio: doublePrecision('exploded_ratio').notNull().default(0),
+  createdBy: text('created_by').notNull(),
+  createdAt: timestamp('created_at').defaultNow(),
+  updatedAt: timestamp('updated_at').defaultNow(),
+});
