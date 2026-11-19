@@ -89,8 +89,13 @@ export const RecruitmentModal: React.FC<Props> = ({
     return DEFAULT_ASSISTANTS;
   }, [employees]);
 
-  // Initialize or reset form
+  const activeAssistantsRef = React.useRef(activeAssistants);
+  activeAssistantsRef.current = activeAssistants;
+
+  // Initialize or reset form only when modal opens or the target requisition changes
   useEffect(() => {
+    if (!isOpen) return;
+
     if (requisition) {
       setPositionTitle(requisition.positionTitle || '');
       setDepartment(requisition.department || '');
@@ -125,11 +130,12 @@ export const RecruitmentModal: React.FC<Props> = ({
       setRemarks('');
 
       // Default assisted by to the logged in user if they are an active recruiter
-      const isOneOfActive = activeAssistants.find((a) => a.code === currentUserCode);
-      setAssistedByCode(isOneOfActive ? isOneOfActive.code : activeAssistants[0]?.code || '22-02-1330');
+      const currentAssistants = activeAssistantsRef.current;
+      const isOneOfActive = currentAssistants.find((a) => a.code === currentUserCode);
+      setAssistedByCode(isOneOfActive ? isOneOfActive.code : currentAssistants[0]?.code || '22-02-1330');
     }
     setError(null);
-  }, [requisition, isOpen, currentUserCode, activeAssistants]);
+  }, [isOpen, requisition?.id, currentUserCode]);
 
   if (!isOpen) return null;
 

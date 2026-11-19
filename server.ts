@@ -765,7 +765,7 @@ app.post('/api/tasks/:id/unpoke', requireAuth, async (req: AuthRequest, res: Res
 app.put('/api/tasks/:id', requireAuth, async (req: AuthRequest, res: Response) => {
   try {
     const id = parseInt(req.params.id, 10);
-    const existing = await db.select().from(tasks).where(eq(tasks.id, id));
+    const existing = await withDbRetry(() => db.select().from(tasks).where(eq(tasks.id, id)));
     if (!existing[0]) return res.status(404).json({ error: 'Task not found' });
 
     const currentTask = existing[0];
@@ -783,29 +783,43 @@ app.put('/api/tasks/:id', requireAuth, async (req: AuthRequest, res: Response) =
     if (managerComments !== undefined) updates.managerComments = managerComments;
     if (status !== undefined) updates.status = status;
 
-    const [updated] = await db.update(tasks).set(updates).where(eq(tasks.id, id)).returning();
+    const [updated] = await withDbRetry(() =>
+      db.update(tasks).set(updates).where(eq(tasks.id, id)).returning()
+    );
 
     // Log progress/delay in audit trail
     if (delayReason && delayReason !== currentTask.delayReason) {
-      await db.insert(taskAuditLogs).values({
-        taskId: id,
-        actionType: 'delay_reported',
-        actionSummary: `Delay reason updated: [${delayCategory || 'General'}] ${delayReason}`,
-        previousValue: currentTask.delayReason || 'None',
-        newValue: delayReason,
-        performedBy: req.user?.name || 'Employee',
-      });
+      try {
+        await withDbRetry(() =>
+          db.insert(taskAuditLogs).values({
+            taskId: id,
+            actionType: 'delay_reported',
+            actionSummary: `Delay reason updated: [${delayCategory || 'General'}] ${delayReason}`,
+            previousValue: currentTask.delayReason || 'None',
+            newValue: delayReason,
+            performedBy: req.user?.name || 'Employee',
+          })
+        );
+      } catch (auditErr) {
+        console.warn('Task delay audit log note:', auditErr);
+      }
     }
 
     if (progressPercent !== undefined && progressPercent !== currentTask.progressPercent) {
-      await db.insert(taskAuditLogs).values({
-        taskId: id,
-        actionType: 'progress_updated',
-        actionSummary: `Progress updated to ${progressPercent}%`,
-        previousValue: `${currentTask.progressPercent}%`,
-        newValue: `${progressPercent}%`,
-        performedBy: req.user?.name || 'Employee',
-      });
+      try {
+        await withDbRetry(() =>
+          db.insert(taskAuditLogs).values({
+            taskId: id,
+            actionType: 'progress_updated',
+            actionSummary: `Progress updated to ${progressPercent}%`,
+            previousValue: `${currentTask.progressPercent}%`,
+            newValue: `${progressPercent}%`,
+            performedBy: req.user?.name || 'Employee',
+          })
+        );
+      } catch (auditErr) {
+        console.warn('Task progress audit log note:', auditErr);
+      }
     }
 
     res.json(updated);
@@ -819,29 +833,36 @@ app.post('/api/tasks/:id/submit', requireAuth, async (req: AuthRequest, res: Res
   try {
     const id = parseInt(req.params.id, 10);
     const { completionNotes, attachments } = req.body;
-    const today = getTodayDhaka();
 
-    const [updated] = await db
-      .update(tasks)
-      .set({
-        status: 'Submitted for Review',
-        approvalStatus: 'Pending Review',
-        progressPercent: 100,
-        employeeCompletionNotes: completionNotes,
-        supportingAttachments: attachments,
-        lastUpdatedBy: req.user?.name || 'Employee',
-        updatedAt: new Date(),
-      })
-      .where(eq(tasks.id, id))
-      .returning();
+    const [updated] = await withDbRetry(() =>
+      db
+        .update(tasks)
+        .set({
+          status: 'Submitted for Review',
+          approvalStatus: 'Pending Review',
+          progressPercent: 100,
+          employeeCompletionNotes: completionNotes,
+          supportingAttachments: attachments,
+          lastUpdatedBy: req.user?.name || 'Employee',
+          updatedAt: new Date(),
+        })
+        .where(eq(tasks.id, id))
+        .returning()
+    );
 
-    await db.insert(taskAuditLogs).values({
-      taskId: id,
-      actionType: 'submission',
-      actionSummary: `Task submitted for managerial review with completion notes.`,
-      newValue: completionNotes || 'Submitted for review',
-      performedBy: req.user?.name || 'Employee',
-    });
+    try {
+      await withDbRetry(() =>
+        db.insert(taskAuditLogs).values({
+          taskId: id,
+          actionType: 'submission',
+          actionSummary: `Task submitted for managerial review with completion notes.`,
+          newValue: completionNotes || 'Submitted for review',
+          performedBy: req.user?.name || 'Employee',
+        })
+      );
+    } catch (auditErr) {
+      console.warn('Task submit audit log note:', auditErr);
+    }
 
     res.json(updated);
   } catch (error: any) {
@@ -876,37 +897,51 @@ app.post('/api/tasks/:id/review', requireAuth, async (req: AuthRequest, res: Res
       newApprovalStatus = 'Rejected';
     }
 
-    const [updated] = await db
-      .update(tasks)
-      .set({
-        status: newStatus,
-        approvalStatus: newApprovalStatus,
-        completionDate: completionDate,
-        managerComments: managerComments,
-        lastUpdatedBy: req.user?.name || 'Manager',
-        updatedAt: new Date(),
-      })
-      .where(eq(tasks.id, id))
-      .returning();
+    const [updated] = await withDbRetry(() =>
+      db
+        .update(tasks)
+        .set({
+          status: newStatus,
+          approvalStatus: newApprovalStatus,
+          completionDate: completionDate,
+          managerComments: managerComments,
+          lastUpdatedBy: req.user?.name || 'Manager',
+          updatedAt: new Date(),
+        })
+        .where(eq(tasks.id, id))
+        .returning()
+    );
 
-    await db.insert(taskAuditLogs).values({
-      taskId: id,
-      actionType: 'approval_decision',
-      actionSummary: `Manager ${req.user?.name} decided [${decision.toUpperCase()}]. Comment: ${managerComments || 'None'}`,
-      previousValue: 'Submitted for Review',
-      newValue: newStatus,
-      performedBy: req.user?.name || 'Manager',
-    });
+    try {
+      await withDbRetry(() =>
+        db.insert(taskAuditLogs).values({
+          taskId: id,
+          actionType: 'approval_decision',
+          actionSummary: `Manager ${req.user?.name} decided [${decision.toUpperCase()}]. Comment: ${managerComments || 'None'}`,
+          previousValue: 'Submitted for Review',
+          newValue: newStatus,
+          performedBy: req.user?.name || 'Manager',
+        })
+      );
+    } catch (auditErr) {
+      console.warn('Task review audit log note:', auditErr);
+    }
 
     // Notify employee
-    await db.insert(notifications).values({
-      recipientEmployeeId: updated.assignedEmployeeId,
-      title: `Task Review Decision: ${decision === 'approve' ? 'Approved' : 'Revision Requested'}`,
-      message: `Your task "${updated.title}" was evaluated by ${req.user?.name}: ${managerComments || decision}`,
-      type: decision === 'approve' ? 'task_assigned' : 'revision_requested',
-      linkId: id,
-      isRead: false,
-    });
+    try {
+      await withDbRetry(() =>
+        db.insert(notifications).values({
+          recipientEmployeeId: updated.assignedEmployeeId,
+          title: `Task Review Decision: ${decision === 'approve' ? 'Approved' : 'Revision Requested'}`,
+          message: `Your task "${updated.title}" was evaluated by ${req.user?.name}: ${managerComments || decision}`,
+          type: decision === 'approve' ? 'task_assigned' : 'revision_requested',
+          linkId: id,
+          isRead: false,
+        })
+      );
+    } catch (notifErr) {
+      console.warn('Task review notification note:', notifErr);
+    }
 
     res.json(updated);
   } catch (error: any) {
@@ -1806,14 +1841,18 @@ app.put(['/api/recruitment/requisitions/:id', '/api/requisitions/:id'], requireA
     }
 
     const id = parseInt(req.params.id, 10);
-    const [existing] = await db.select().from(recruitmentRequisitions).where(eq(recruitmentRequisitions.id, id));
+    const [existing] = await withDbRetry(() =>
+      db.select().from(recruitmentRequisitions).where(eq(recruitmentRequisitions.id, id))
+    );
     if (!existing) {
       return res.status(404).json({ error: 'Requisition not found.' });
     }
 
     // Record-level Concurrency / Conflict Check
-    const clientVersion = req.body.version !== undefined ? parseInt(String(req.body.version), 10) : null;
-    if (clientVersion !== null && clientVersion < existing.version) {
+    const clientVersion = req.body.version !== undefined && req.body.version !== null
+      ? parseInt(String(req.body.version), 10)
+      : null;
+    if (clientVersion !== null && !Number.isNaN(clientVersion) && clientVersion < existing.version) {
       return res.status(409).json({
         error: `Simultaneous update conflict: Record was updated by ${
           existing.lastUpdatedByName || 'another employee'
@@ -1841,10 +1880,10 @@ app.put(['/api/recruitment/requisitions/:id', '/api/requisitions/:id'], requireA
       recruitmentAssistedByCode,
     } = req.body;
 
-    if (requisitionSubmittedBy !== undefined && !requisitionSubmittedBy.trim()) {
+    if (requisitionSubmittedBy !== undefined && !String(requisitionSubmittedBy).trim()) {
       return res.status(400).json({ error: 'Requisition Submitted By is required and cannot be empty.' });
     }
-    if (hod !== undefined && !hod.trim()) {
+    if (hod !== undefined && !String(hod).trim()) {
       return res.status(400).json({ error: 'Head of Department (HOD) is required and cannot be empty.' });
     }
 
@@ -1857,6 +1896,19 @@ app.put(['/api/recruitment/requisitions/:id', '/api/requisitions/:id'], requireA
     let timeToFillDays: number | null = null;
     if (newStatus === 'Joined' && newDOJ && newReqDate) {
       timeToFillDays = calculateCalendarDays(newReqDate, newDOJ);
+    }
+
+    let assistedById = existing.recruitmentAssistedById;
+    if (recruitmentAssistedByCode && recruitmentAssistedByCode !== existing.recruitmentAssistedByCode) {
+      try {
+        const [emp] = await withDbRetry(() =>
+          db
+            .select({ id: employees.id })
+            .from(employees)
+            .where(eq(employees.employeeCode, recruitmentAssistedByCode))
+        );
+        if (emp) assistedById = emp.id;
+      } catch {}
     }
 
     // Detect Changes for Audit Trail
@@ -1879,58 +1931,68 @@ app.put(['/api/recruitment/requisitions/:id', '/api/requisitions/:id'], requireA
 
     const nextVersion = existing.version + 1;
 
-    const [updated] = await db
-      .update(recruitmentRequisitions)
-      .set({
-        positionTitle: positionTitle !== undefined ? positionTitle : existing.positionTitle,
-        department: department !== undefined ? department : existing.department,
-        requisitionDate: newReqDate,
-        requisitionSubmittedBy: requisitionSubmittedBy !== undefined ? requisitionSubmittedBy : existing.requisitionSubmittedBy,
-        hod: hod !== undefined ? hod : existing.hod,
-        company: company !== undefined ? company : existing.company,
-        vacancy: vacancy !== undefined ? parseInt(String(vacancy), 10) : existing.vacancy,
-        recruitmentType: recruitmentType !== undefined ? recruitmentType : existing.recruitmentType,
-        replacementOfWhom: replacementOfWhom !== undefined ? replacementOfWhom : existing.replacementOfWhom,
-        replacementEmployeeSalary:
-          replacementEmployeeSalary !== undefined ? replacementEmployeeSalary : existing.replacementEmployeeSalary,
-        offerLetterDate: offerLetterDate !== undefined ? (offerLetterDate || null) : existing.offerLetterDate,
-        dateOfJoining: newDOJ,
-        recruitmentStatus: newStatus,
-        timeToFillDays,
-        remarks: remarks !== undefined ? remarks : existing.remarks,
-        recruitmentAssistedByName:
-          recruitmentAssistedByName !== undefined ? recruitmentAssistedByName : existing.recruitmentAssistedByName,
-        recruitmentAssistedByCode:
-          recruitmentAssistedByCode !== undefined ? recruitmentAssistedByCode : existing.recruitmentAssistedByCode,
-        lastUpdatedById: req.user?.employeeCode || req.user?.uid || 'user',
-        lastUpdatedByName: req.user?.name || 'HR Employee',
-        lastUpdatedAt: new Date(),
-        version: nextVersion,
-        updatedAt: new Date(),
-      })
-      .where(eq(recruitmentRequisitions.id, id))
-      .returning();
+    const [updated] = await withDbRetry(() =>
+      db
+        .update(recruitmentRequisitions)
+        .set({
+          positionTitle: positionTitle !== undefined ? positionTitle : existing.positionTitle,
+          department: department !== undefined ? department : existing.department,
+          requisitionDate: newReqDate,
+          requisitionSubmittedBy: requisitionSubmittedBy !== undefined ? requisitionSubmittedBy : existing.requisitionSubmittedBy,
+          hod: hod !== undefined ? hod : existing.hod,
+          company: company !== undefined ? company : existing.company,
+          vacancy: vacancy !== undefined ? parseInt(String(vacancy), 10) : existing.vacancy,
+          recruitmentType: recruitmentType !== undefined ? recruitmentType : existing.recruitmentType,
+          replacementOfWhom: replacementOfWhom !== undefined ? replacementOfWhom : existing.replacementOfWhom,
+          replacementEmployeeSalary:
+            replacementEmployeeSalary !== undefined ? replacementEmployeeSalary : existing.replacementEmployeeSalary,
+          offerLetterDate: offerLetterDate !== undefined ? (offerLetterDate || null) : existing.offerLetterDate,
+          dateOfJoining: newDOJ,
+          recruitmentStatus: newStatus,
+          timeToFillDays,
+          remarks: remarks !== undefined ? remarks : existing.remarks,
+          recruitmentAssistedById: assistedById,
+          recruitmentAssistedByName:
+            recruitmentAssistedByName !== undefined ? recruitmentAssistedByName : existing.recruitmentAssistedByName,
+          recruitmentAssistedByCode:
+            recruitmentAssistedByCode !== undefined ? recruitmentAssistedByCode : existing.recruitmentAssistedByCode,
+          lastUpdatedById: req.user?.employeeCode || req.user?.uid || 'user',
+          lastUpdatedByName: req.user?.name || 'HR Employee',
+          lastUpdatedAt: new Date(),
+          version: nextVersion,
+          updatedAt: new Date(),
+        })
+        .where(eq(recruitmentRequisitions.id, id))
+        .returning()
+    );
 
-    // Log to Audit Trail
+    // Log to Audit Trail (non-blocking so audit log issues never roll back a successful update)
     if (changes.length > 0) {
-      await db.insert(recruitmentAuditLogs).values({
-        requisitionId: updated.id,
-        requisitionCode: updated.requisitionCode,
-        positionTitle: updated.positionTitle,
-        action: newStatus !== existing.recruitmentStatus ? 'STATUS_CHANGE' : 'UPDATE',
-        fieldName: changes.map((c) => c.split(':')[0]).join(', '),
-        previousValue: existing.recruitmentStatus,
-        newValue: updated.recruitmentStatus,
-        details: changes.join('; '),
-        performedByUserId: req.user?.employeeCode || req.user?.uid,
-        performedByName: req.user?.name || 'HR Employee',
-        performedByRole: req.user?.role,
-      });
+      try {
+        await withDbRetry(() =>
+          db.insert(recruitmentAuditLogs).values({
+            requisitionId: updated.id,
+            requisitionCode: updated.requisitionCode,
+            positionTitle: updated.positionTitle,
+            action: newStatus !== existing.recruitmentStatus ? 'STATUS_CHANGE' : 'UPDATE',
+            fieldName: changes.map((c) => c.split(':')[0]).join(', '),
+            previousValue: existing.recruitmentStatus,
+            newValue: updated.recruitmentStatus,
+            details: changes.join('; '),
+            performedByUserId: req.user?.employeeCode || req.user?.uid,
+            performedByName: req.user?.name || 'HR Employee',
+            performedByRole: req.user?.role,
+          })
+        );
+      } catch (auditErr: any) {
+        console.warn('Audit log update note (requisition updated successfully):', auditErr?.message || auditErr);
+      }
     }
 
     res.json(updated);
   } catch (error: any) {
-    res.status(500).json({ error: error.message });
+    console.error('Error updating recruitment requisition:', error);
+    res.status(500).json({ error: error.message || 'Failed to update requisition in database.' });
   }
 });
 

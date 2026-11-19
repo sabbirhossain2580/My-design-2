@@ -149,10 +149,11 @@ const MainAppContent: React.FC = () => {
   };
 
   // Load Task & KPI Data
-  const loadTaskData = async () => {
+  const loadTaskData = async (silent: unknown = false) => {
     if (!isAuthenticated) return;
+    const isSilent = silent === true;
     try {
-      setLoading(true);
+      if (!isSilent) setLoading(true);
       const [
         dashStatsRes,
         empListRes,
@@ -184,7 +185,7 @@ const MainAppContent: React.FC = () => {
     } catch (error) {
       console.error('Failed to load portal data:', error);
     } finally {
-      setLoading(false);
+      if (!isSilent) setLoading(false);
     }
   };
 
@@ -200,8 +201,18 @@ const MainAppContent: React.FC = () => {
   useEffect(() => {
     if (!isAuthenticated) return;
 
-    const interval = setInterval(() => {
-      loadRecruitmentData(true);
+    let inFlight = false;
+    const interval = setInterval(async () => {
+      if (inFlight) return;
+      inFlight = true;
+      try {
+        await Promise.allSettled([
+          loadRecruitmentData(true),
+          loadTaskData(true),
+        ]);
+      } finally {
+        inFlight = false;
+      }
     }, 6000);
 
     return () => clearInterval(interval);
